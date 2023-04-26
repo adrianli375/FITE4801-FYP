@@ -50,7 +50,7 @@ If you are returned the version of git, it means your install was successful!
 
 # How to begin using this Git repo
 
-Choose a folder/location in your local device. Once you selected your folder location, open the terminal in your device. Run `git clone <repo-link>` in your local device. For example, to get a local repository for this Git repo, you can run the command `git clone https://github.com/adrianli375/Test-Project`. 
+Choose a folder/location in your local device. Once you selected your folder location, open the terminal in your device. Run `git clone <repo-link>` in your local device. For example, to get a local repository for this Git repo, you can run the command `git clone https://github.com/adrianli375/FITE4801-FYP`. 
 
 Since you will become a (potential) contributor of this repo, you would like to work separately with my work and to avoid conflicts with me while editing your files. To achieve this, you can create your own branch by the command `git branch <branch-name>`. For example, if you would like to set your branch name to `branch-1`, you can run the command `git branch branch-1`. To switch to the branch that you are working with, run `git checkout <branch-name>`. For example, if your branch name is `branch-1`, you can run the command `git checkout branch-1`. 
 
