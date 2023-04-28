@@ -20,3 +20,11 @@ jupyter lab
 in the terminal from your `base` environment (NOT from any other virtual environments!)
 
 Jupyter Lab will be opened in your default browser. Under the tab `Kernel`, choose the appropriate kernel as the preferred one. You are all set! 
+
+# Using the Classical Jupyter Notebook
+
+Alternatively, you can type the command 
+```
+jupyter notebook
+```
+to start running the Jupyter Notebook using the classical user interface. 
