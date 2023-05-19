@@ -6,7 +6,7 @@ dependencies:
   - ipykernel
   - matplotlib>=3.2.2
   - scikit-learn<1.2
-  - pandas=1.4.4
+  - pandas=1.5.3
   - requests>=2.24.0
   - lightgbm
   - joblib<1.2
