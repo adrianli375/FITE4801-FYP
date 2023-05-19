@@ -15,6 +15,7 @@ dependencies:
   - tensorflow=2.11.0
   - nltk>=3.5
   - spacy>=3.5
+  - statsmodels=0.14.0
   - tzlocal>4.0
   - yfinance>0.2
   - flask>2.2.0
