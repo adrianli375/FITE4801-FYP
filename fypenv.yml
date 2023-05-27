@@ -26,5 +26,5 @@ dependencies:
     - gym==0.26.2
     - gym-anytrading==1.3.2
     - mglearn
-    - psutil>=5.7.2
+    - psutil==5.9.5
     - stable_baselines3[extra]>=2.0.0a9
