@@ -25,7 +25,6 @@ dependencies:
     - arch==5.5.0
     - gym==0.21
     - gym-anytrading==1.3.2
-    - mglearn
     - psutil==5.9.5
     - shimmy>=0.2.1
     - torch==2.0.1
