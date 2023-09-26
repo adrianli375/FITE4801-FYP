@@ -15,5 +15,5 @@ for i in range(1,101):
     else:
         print("Error",i)
         Logger.log("Error",i)
-
+ 
 print("done")
