@@ -1,5 +1,7 @@
 from AlgorithmImports import *
 from arch import arch_model
+from datetime import datetime
+import numpy as np
 
 
 class GarchModel:

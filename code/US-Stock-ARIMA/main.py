@@ -1,17 +1,16 @@
 # region imports
 from AlgorithmImports import *
 # endregion
-from ModelGARCH import GarchModel
+from ModelARIMA import ArimaModel
 
-class GARCH1(QCAlgorithm):
+class ARIMA1(QCAlgorithm):
 
     def Initialize(self):
         # basic configs
         self.SetStartDate(2013, 1, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
-        # self.SetAccountCurrency("HKD")
         self.SetCash(1000000)  # Set Strategy Cash
-        self.Settings.FreePortfolioValuePercentage = 0.2 # set cash ratio
+        # self.Settings.FreePortfolioValuePercentage = 0.2 # set cash ratio
         self.SetBrokerageModel(BrokerageName.InteractiveBrokersBrokerage, AccountType.Margin)
         self.SetTimeZone(TimeZones.Toronto)
 
@@ -19,7 +18,7 @@ class GARCH1(QCAlgorithm):
         self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddEquity("XOM", Resolution.Daily)
+        ticker = self.AddEquity("SPY", Resolution.Daily)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -29,14 +28,12 @@ class GARCH1(QCAlgorithm):
         # additional defined variables - model
         self.daysBefore = 250
         self.model = None
-        self.GARCHp = 2
-        self.GARCHq = 2
+        self.modelTSOrder = (1, 1, 0) # corresponding to (p, d, q) for the class of ARIMA models
+        self.predictionIntervalConfidenceLevel = 0.95
 
         # additional defined variables - trade
         self.buyQuantity = 50
         self.sellPositionsRatio = 0.75
-        self.predictedLowMargin = 0.05
-        self.predictedHighMargin = 0.1
         self.recentBuyPrice = 0
         self.recentSellPrice = np.inf
         self.takeProfitLevel = 1.5
@@ -49,21 +46,18 @@ class GARCH1(QCAlgorithm):
             return
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
-        predicted, predictedStd = self.FitPredictModel()
+        predictedLow, predicted, predictedHigh = self.FitPredictModel()
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
 
         if not self.Portfolio.Invested:
-            pass
-            # self.SetHoldings(self.ticker, 1)
-        if self.BuySignalTriggered(currentDayLow, predicted):
-            predictedLow = predicted * (1 - self.predictedLowMargin)
+            self.SetHoldings(self.ticker, 1)
+        elif self.BuySignalTriggered(currentDayLow, predictedLow):
             buyPrice = round(predictedLow, 2)
             ticket = self.LimitOrder(self.ticker, self.buyQuantity, buyPrice)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
-        elif self.SellSignalTriggered(currentDayHigh, predicted, predictedStd, averagePrice):
-            predictedHigh = predicted * (1 + self.predictedHighMargin)
+        elif (self.SellSignalTriggered(currentDayHigh, predictedHigh, averagePrice) and positions > 0) or averagePrice > predictedLow * self.stopLossRatio:
             sellQuantity = -int(positions * self.sellPositionsRatio)
             sellPrice = round(predictedHigh, 2)
             ticket = self.LimitOrder(self.ticker, sellQuantity, sellPrice)
@@ -80,12 +74,12 @@ class GARCH1(QCAlgorithm):
             pastPrices.append(closingPrice)
         return np.array(pastPrices)
     
-    def FitPredictModel(self):
-        lastObsValue = self.pastClosingPrices[-1]
-        self.model = GarchModel(self.pastClosingPrices, lastObsValue, p=self.GARCHp, q=self.GARCHq)
+    def FitPredictModel(self) -> (int, int, int):
+        self.model = ArimaModel(self.pastClosingPrices, order=self.modelTSOrder, 
+                                percent_ci=self.predictionIntervalConfidenceLevel)
         self.model.fit()
-        forecastMean, forecastStd = self.model.predict_forecasts()
-        return forecastMean, forecastStd
+        lower, est, upper = self.model.predict_forecasts()
+        return lower, est, upper
     
     def BuySignalTriggered(self, currentLow: float, predictedLow: float) -> bool:
         triggered = (currentLow < predictedLow) and (self.recentSellPrice > predictedLow)
@@ -93,14 +87,13 @@ class GARCH1(QCAlgorithm):
             self.Log(f"Buy signal triggered")
         return triggered
     
-    def SellSignalTriggered(self, currentHigh: float, predictedHigh: float, volatility: float, averagePrice: float, 
+    def SellSignalTriggered(self, currentHigh: float, predictedHigh: float, averagePrice: float, 
                             stdDevLoading: float=1.5) -> bool:
-        priceStd = volatility
+        priceStd = self.pastClosingPrices.std()
         triggered = (((currentHigh > predictedHigh) and \
             (self.recentBuyPrice + stdDevLoading * priceStd < predictedHigh)) and \
                 averagePrice * self.takeProfitLevel < predictedHigh or \
-                    (averagePrice * self.takeProfitLevel > currentHigh)) or \
-                        (predictedHigh < averagePrice * self.stopLossRatio)
+                    (averagePrice * self.takeProfitLevel > currentHigh))
         if triggered:
             self.Log(f"Sell signal triggered")
         return triggered
