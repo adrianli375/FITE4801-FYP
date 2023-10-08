@@ -3,22 +3,22 @@ from AlgorithmImports import *
 # endregion
 from ModelARIMA import ArimaModel
 
-class ARIMA1(QCAlgorithm):
+class ARIMACrypto(QCAlgorithm):
 
     def Initialize(self):
         # basic configs
-        self.SetStartDate(2013, 1, 1)  # Set Start Date
+        self.SetStartDate(2019, 9, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
         self.SetCash(1000000)  # Set Strategy Cash
         # self.Settings.FreePortfolioValuePercentage = 0.2 # set cash ratio
-        self.SetBrokerageModel(BrokerageName.InteractiveBrokersBrokerage, AccountType.Margin)
+        self.SetBrokerageModel(BrokerageName.Binance, AccountType.Margin)
         self.SetTimeZone(TimeZones.Toronto)
 
         # set a benchmark
-        self.SetBenchmark("SPY")
+        # self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddEquity("SPY", Resolution.Daily)
+        ticker = self.AddCrypto("ETHBUSD", Resolution.Daily)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -45,8 +45,12 @@ class ARIMA1(QCAlgorithm):
         if not data.Bars.ContainsKey(self.ticker):
             return
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
+        if self.pastClosingPrices is None:
+            return
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
         predictedLow, predicted, predictedHigh = self.FitPredictModel()
+        if predictedLow is None or predicted is None or predictedHigh is None:
+            return
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
@@ -68,18 +72,24 @@ class ARIMA1(QCAlgorithm):
 
     def GetPastClosingPrices(self, daysBefore: int) -> np.array:
         pastPrices = []
-        slices = self.History(daysBefore)
-        for s in slices:
-            closingPrice = s.Bars[self.ticker].Close
-            pastPrices.append(closingPrice)
-        return np.array(pastPrices)
+        slices = self.History(self.ticker, daysBefore, Resolution.Daily)
+        try:
+            pastPrices = slices['close']
+            return np.array(pastPrices)
+        except KeyError:
+            return None
     
     def FitPredictModel(self) -> (int, int, int):
-        self.model = ArimaModel(self.pastClosingPrices, order=self.modelTSOrder, 
-                                percent_ci=self.predictionIntervalConfidenceLevel)
-        self.model.fit()
-        lower, est, upper = self.model.predict_forecasts()
-        return lower, est, upper
+        if len(self.pastClosingPrices) <= 2:
+            return None, None, None
+        try:
+            self.model = ArimaModel(self.pastClosingPrices, order=self.modelTSOrder, 
+                                    percent_ci=self.predictionIntervalConfidenceLevel)
+            self.model.fit()
+            lower, est, upper = self.model.predict_forecasts()
+            return lower, est, upper
+        except Exception as e:
+            return None, None, None
     
     def BuySignalTriggered(self, currentLow: float, predictedLow: float) -> bool:
         triggered = (currentLow < predictedLow) and (self.recentSellPrice > predictedLow)
