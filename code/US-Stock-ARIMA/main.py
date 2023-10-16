@@ -18,7 +18,7 @@ class ARIMA1(QCAlgorithm):
         self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddEquity("SPY", Resolution.Daily)
+        ticker = self.AddEquity("UNH", Resolution.Daily)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -29,15 +29,14 @@ class ARIMA1(QCAlgorithm):
         self.daysBefore = 250
         self.model = None
         self.modelTSOrder = (1, 1, 0) # corresponding to (p, d, q) for the class of ARIMA models
-        self.predictionIntervalConfidenceLevel = 0.95
+        self.predictionIntervalConfidenceLevel = 0.9
 
         # additional defined variables - trade
-        self.buyQuantity = 50
         self.sellPositionsRatio = 0.75
         self.recentBuyPrice = 0
         self.recentSellPrice = np.inf
-        self.takeProfitLevel = 1.5
-        self.stopLossRatio = 0.9
+        self.takeProfitLevel = 1.3
+        self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
         if not self.ticker in data:
@@ -50,12 +49,14 @@ class ARIMA1(QCAlgorithm):
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
+        cashAvailable = self.Portfolio.CashBook["USD"].Amount
 
         if not self.Portfolio.Invested:
             self.SetHoldings(self.ticker, 1)
         elif self.BuySignalTriggered(currentDayLow, predictedLow):
             buyPrice = round(predictedLow, 2)
-            ticket = self.LimitOrder(self.ticker, self.buyQuantity, buyPrice)
+            buyQuantity = max(0, cashAvailable / currentDayHigh)
+            ticket = self.LimitOrder(self.ticker, buyQuantity, buyPrice)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
         elif (self.SellSignalTriggered(currentDayHigh, predictedHigh, averagePrice) and positions > 0) or averagePrice > currentDayLow * self.stopLossRatio:
             sellQuantity = -int(positions * self.sellPositionsRatio)

@@ -18,7 +18,7 @@ class ARIMACrypto(QCAlgorithm):
         # self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddCrypto("ETHBUSD", Resolution.Daily)
+        ticker = self.AddCrypto("TRXBUSD", Resolution.Daily)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -32,12 +32,11 @@ class ARIMACrypto(QCAlgorithm):
         self.predictionIntervalConfidenceLevel = 0.95
 
         # additional defined variables - trade
-        self.buyQuantity = 50
         self.sellPositionsRatio = 0.75
         self.recentBuyPrice = 0
         self.recentSellPrice = np.inf
         self.takeProfitLevel = 1.5
-        self.stopLossRatio = 0.9
+        self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
         if not self.ticker in data:
@@ -51,6 +50,7 @@ class ARIMACrypto(QCAlgorithm):
         predictedLow, predicted, predictedHigh = self.FitPredictModel()
         if predictedLow is None or predicted is None or predictedHigh is None:
             return
+        currentPrice = data.Bars[self.ticker].Close
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
@@ -58,8 +58,9 @@ class ARIMACrypto(QCAlgorithm):
         if not self.Portfolio.Invested:
             self.SetHoldings(self.ticker, 1)
         elif self.BuySignalTriggered(currentDayLow, predictedLow):
+            buyQuantity = self.Portfolio.Cash / currentPrice
             buyPrice = round(predictedLow, 2)
-            ticket = self.LimitOrder(self.ticker, self.buyQuantity, buyPrice)
+            ticket = self.LimitOrder(self.ticker, buyQuantity, buyPrice)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
         elif (self.SellSignalTriggered(currentDayHigh, predictedHigh, averagePrice) and positions > 0) or averagePrice > currentDayLow * self.stopLossRatio:
             sellQuantity = -int(positions * self.sellPositionsRatio)

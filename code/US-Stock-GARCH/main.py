@@ -10,7 +10,7 @@ class GARCH1(QCAlgorithm):
         self.SetStartDate(2013, 1, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
         # self.SetAccountCurrency("HKD")
-        self.SetCash(1000000)  # Set Strategy Cash
+        self.SetCash(100000)  # Set Strategy Cash
         self.Settings.FreePortfolioValuePercentage = 0.2 # set cash ratio
         self.SetBrokerageModel(BrokerageName.InteractiveBrokersBrokerage, AccountType.Margin)
         self.SetTimeZone(TimeZones.Toronto)
@@ -19,7 +19,7 @@ class GARCH1(QCAlgorithm):
         self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddEquity("XOM", Resolution.Daily)
+        ticker = self.AddEquity("SPY", Resolution.Daily)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -33,7 +33,6 @@ class GARCH1(QCAlgorithm):
         self.GARCHq = 2
 
         # additional defined variables - trade
-        self.buyQuantity = 50
         self.sellPositionsRatio = 0.75
         self.predictedLowMargin = 0.05
         self.predictedHighMargin = 0.1
@@ -50,6 +49,7 @@ class GARCH1(QCAlgorithm):
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
         predicted, predictedStd = self.FitPredictModel()
+        currentPrice = data.Bars[self.ticker].Close
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
@@ -58,9 +58,10 @@ class GARCH1(QCAlgorithm):
             pass
             # self.SetHoldings(self.ticker, 1)
         if self.BuySignalTriggered(currentDayLow, predicted):
+            buyQuantity = self.Portfolio.Cash / currentPrice
             predictedLow = predicted * (1 - self.predictedLowMargin)
             buyPrice = round(predictedLow, 2)
-            ticket = self.LimitOrder(self.ticker, self.buyQuantity, buyPrice)
+            ticket = self.LimitOrder(self.ticker, buyQuantity, buyPrice)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
         elif self.SellSignalTriggered(currentDayHigh, predicted, predictedStd, averagePrice):
             predictedHigh = predicted * (1 + self.predictedHighMargin)

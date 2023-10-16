@@ -18,7 +18,7 @@ class GARCHCrypto(QCAlgorithm):
         # self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddCrypto("ETHBUSD", Resolution.Daily, Market.Binance)
+        ticker = self.AddCrypto("AVAXBUSD", Resolution.Daily, Market.Binance)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -26,20 +26,19 @@ class GARCHCrypto(QCAlgorithm):
         self.pastClosingPrices = None
 
         # additional defined variables - model
-        self.daysBefore = 250
+        self.daysBefore = 100
         self.model = None
-        self.GARCHp = 1
+        self.GARCHp = 2
         self.GARCHq = 1
 
         # additional defined variables - trade
-        self.buyQuantity = 50
         self.sellPositionsRatio = 0.75
         self.predictedLowMargin = 0.05
         self.predictedHighMargin = 0.1
         self.recentBuyPrice = 0
         self.recentSellPrice = np.inf
-        self.takeProfitLevel = 1.5
-        self.stopLossRatio = 0.9
+        self.takeProfitLevel = 1.7
+        self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
         if not self.ticker in data:
@@ -53,6 +52,7 @@ class GARCHCrypto(QCAlgorithm):
         predicted, predictedStd = self.FitPredictModel()
         if predicted is None:
             return
+        currentPrice = data.Bars[self.ticker].Close
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
@@ -61,9 +61,10 @@ class GARCHCrypto(QCAlgorithm):
             pass
             # self.SetHoldings(self.ticker, 1)
         if self.BuySignalTriggered(currentDayLow, predicted):
+            buyQuantity = self.Portfolio.Cash / currentPrice
             predictedLow = predicted * (1 - self.predictedLowMargin)
             buyPrice = round(predictedLow, 2)
-            ticket = self.LimitOrder(self.ticker, self.buyQuantity, buyPrice)
+            ticket = self.LimitOrder(self.ticker, buyQuantity, buyPrice)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
         elif self.SellSignalTriggered(currentDayHigh, predicted, predictedStd, averagePrice):
             predictedHigh = predicted * (1 + self.predictedHighMargin)
