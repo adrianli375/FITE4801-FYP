@@ -18,7 +18,7 @@ class VaRTrading(QCAlgorithm):
         # self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddCrypto('BTCBUSD', Resolution.Daily, Market.Binance)
+        ticker = self.AddCrypto('BTCBUSD', Resolution.Daily, Market.Binance).Symbol
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
