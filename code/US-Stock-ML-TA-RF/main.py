@@ -2,7 +2,7 @@
 from AlgorithmImports import *
 # endregion
 import talib as tb
-from sklearn.neighbors import KNeighborsRegressor
+from sklearn.ensemble import RandomForestClassifier
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 
@@ -33,11 +33,11 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.scaler = StandardScaler()
 
         #training
-        self.knn_model = KNeighborsRegressor(n_neighbors=self.n_neighbors)
+        self.model = RandomForestClassifier(max_depth=self.max_depth)
         X = history[["LMA50","LMA100","LMA200","RSI","MACD","pc"]]
         X = self.scaler.fit_transform(X)
         y = history["signal"]
-        self.knn_model.fit(X,y)
+        self.model.fit(X,y)
         return
 
     def Initialize(self):
@@ -56,14 +56,14 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.npercent = 0.03
         self.sellatnpercent = True
         self.sellatndays = True
-        self.extendWhenSignalled = True 
+        self.extendWhenSignalled = True
         self.updateExePriceWhenExtend = True # self.extendWhenSignalled must be true
         self.sellWhenSignalChange = True 
-        self.buyAtOpen = True
-        self.sellAtOpen = True
+        self.buyAtOpen = False
+        self.sellAtOpen = False
 
         #ML specific param
-        self.n_neighbors = 5
+        self.max_depth = 5
 
         self.stock = self.AddEquity("SPY", self.setResolution).Symbol
 
@@ -96,7 +96,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         # history["signal"] =  history["n5pc"].apply(lambda x: 1 if x > 0.03 else ( -1 if x < -0.03 else 0))
         X = [history.iloc[-1][["LMA50","LMA100","LMA200","RSI","MACD","pc"]]]
         X = self.scaler.transform(X)
-        signal = self.knn_model.predict(X)
+        signal = self.model.predict(X)
 
         q = self.Portfolio[self.stock].Quantity
 
