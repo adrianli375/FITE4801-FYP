@@ -50,7 +50,6 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.tradePeriod = 5
         self.traded = False
         self.placedTrade = self.Time
-        self.marginforsafety = 0.8
         self.tradeConfidenceLevel = 0.6
         self.tradeHistory = 365*3
         self.npercent = 0.03
@@ -145,7 +144,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
             self.exePrice = 0
             self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
             if signal >= self.tradeConfidenceLevel:
-                q = self.Portfolio.MarginRemaining/price * self.marginforsafety
+                q = self.Portfolio.Cash/price 
                 if self.buyAtOpen:
                     ticket = self.MarketOrder(self.stock, q)
                 else:
@@ -154,7 +153,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                 self.traded = True
                 self.placedTrade = self.Time.strftime("%Y-%m-%d")
             elif signal <= -self.tradeConfidenceLevel:
-                q = self.Portfolio.MarginRemaining/price * self.marginforsafety
+                q = self.Portfolio.Cash/price 
                 if self.buyAtOpen:
                     ticket = self.MarketOrder(self.stock, -q)
                 else:
