@@ -53,6 +53,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.tradeConfidenceLevel = 0.6
         self.tradeHistory = 365*3
         self.npercent = 0.03
+        self.stoplosspercent = 0.01 #0 for no stoploss
         self.sellatnpercent = True
         self.sellatndays = True
         self.extendWhenSignalled = True
@@ -131,7 +132,22 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                 else:
                     self.LimitOrder(self.stock, -q, self.exePrice * (1 - self.npercent) , tag="take profit")
 
-
+            if not sell and self.stoplosspercent>0:
+                self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
+                if q>0:
+                    if price < self.exePrice * (1 - self.stoplosspercent):
+                        self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
+                        self.MarketOrder(self.stock, -q)
+                        self.Log(f"Stop Loss, price: {price}")
+                    else:
+                        self.StopLimitOrder(self.stock, -q, self.exePrice * (1 - self.stoplosspercent), self.exePrice * (1 - self.stoplosspercent))
+                else:
+                    if price > self.exePrice * (1 + self.stoplosspercent):
+                        self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
+                        self.MarketOrder(self.stock, -q)
+                        self.Log(f"Stop Loss, price: {price}")
+                    else:
+                        self.StopLimitOrder(self.stock, -q, self.exePrice * (1 + self.stoplosspercent), self.exePrice * (1 + self.stoplosspercent))
             
             if sell:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled

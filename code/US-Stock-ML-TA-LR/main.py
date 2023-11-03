@@ -2,7 +2,7 @@
 from AlgorithmImports import *
 # endregion
 import talib as tb
-from sklearn.neighbors import KNeighborsRegressor
+from sklearn.linear_model import LogisticRegression
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 
@@ -33,11 +33,11 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.scaler = StandardScaler()
 
         #training
-        self.knn_model = KNeighborsRegressor(n_neighbors=self.n_neighbors)
+        self.model = LogisticRegression()
         X = history[["LMA50","LMA100","LMA200","RSI","MACD","pc"]]
         X = self.scaler.fit_transform(X)
         y = history["signal"]
-        self.knn_model.fit(X,y)
+        self.model.fit(X,y)
         return
 
     def Initialize(self):
@@ -63,7 +63,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.sellAtOpen = True
 
         #ML specific param
-        self.n_neighbors = 5
+        
 
         self.stock = self.AddEquity("SPY", self.setResolution).Symbol
 
@@ -96,7 +96,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         # history["signal"] =  history["n5pc"].apply(lambda x: 1 if x > 0.03 else ( -1 if x < -0.03 else 0))
         X = [history.iloc[-1][["LMA50","LMA100","LMA200","RSI","MACD","pc"]]]
         X = self.scaler.transform(X)
-        signal = self.knn_model.predict(X)
+        signal = self.model.predict(X)
 
         q = self.Portfolio[self.stock].Quantity
 
@@ -131,7 +131,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                     self.LimitOrder(self.stock, -q, self.exePrice * (1 + self.npercent) , tag="take profit")
                 else:
                     self.LimitOrder(self.stock, -q, self.exePrice * (1 - self.npercent) , tag="take profit")
-            
+
             if not sell and self.stoplosspercent>0:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
                 if q>0:
@@ -148,8 +148,6 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                         self.Log(f"Stop Loss, price: {price}")
                     else:
                         self.StopLimitOrder(self.stock, -q, self.exePrice * (1 + self.stoplosspercent), self.exePrice * (1 + self.stoplosspercent))
-
-
             
             if sell:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
