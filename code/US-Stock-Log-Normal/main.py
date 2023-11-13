@@ -4,7 +4,6 @@ from AlgorithmImports import *
 from lognormal import LogNormal
 
 class VaRTrading(QCAlgorithm):
-
     def Initialize(self):
         # basic configs
         self.SetStartDate(2013, 1, 1)  # Set Start Date
@@ -19,7 +18,7 @@ class VaRTrading(QCAlgorithm):
         self.SetBenchmark("SPY")
 
         # tickers
-        ticker = self.AddEquity("SPY", Resolution.Daily)
+        ticker = self.AddEquity("SPY", Resolution.Hour)
         self.ticker = ticker.Symbol
         ticker.SetDataNormalizationMode(DataNormalizationMode.Raw)
 
@@ -27,15 +26,14 @@ class VaRTrading(QCAlgorithm):
         self.pastClosingPrices = None
 
         # additional defined variables - model
-        self.daysBefore = 50
+        self.hoursBefore = 30
         self.model = None
-        self.confLevel = 0.8
+        self.confLevel = 0.95
 
         # additional defined variables - trade
-        self.sellPositionsRatio = 0.75
-        self.strongSellPositionsRatio = 0.9
         self.recentBuyPrice = 0
         self.recentSellPrice = np.inf
+        self.stopLossRatio = 0.05
 
 
     def OnData(self, data: Slice):
@@ -43,31 +41,30 @@ class VaRTrading(QCAlgorithm):
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
-        self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
+        self.pastClosingPrices = self.GetPastClosingPrices(self.hoursBefore)
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
         holding = self.Portfolio[self.ticker]
         cash = self.Portfolio.Cash
         averagePrice = holding.AveragePrice
         currentPrice = data.Bars[self.ticker].Close
         positions = holding.Quantity
-        buyQuantity = cash / currentPrice
         
         # fit model
         self.model = LogNormal(self.pastClosingPrices)
 
-        # trade
-        if self.StrongSellSignalTriggered(currentDayHigh):
-            quantity = -int(positions * self.strongSellPositionsRatio)
-            price = self.CalculateTVaR(self.confLevel)
-            ticket = self.LimitOrder(self.ticker, quantity, price)
-            self.Log(f"Sell order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
+        # normal trading hours: check if stop loss reached first
+        if (positions > 0 and currentPrice < averagePrice * (1 - self.stopLossRatio)) or (positions < 0 and currentPrice > (1 + self.stopLossRatio)):
+            self.Liquidate()
         elif self.BuySignalTriggered(currentDayLow):
-            quantity = buyQuantity
+            quantity = cash / currentPrice
             price = self.CalculateVaR(1 - self.confLevel)
             ticket = self.LimitOrder(self.ticker, quantity, price)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
         elif self.SellSignalTriggered(currentDayHigh):
-            quantity = -int(positions * self.sellPositionsRatio)
+            if positions != 0:
+                quantity = -positions
+            else:
+                quantity = -cash / currentPrice
             price = self.CalculateVaR(self.confLevel)
             ticket = self.LimitOrder(self.ticker, quantity, price)
             self.Log(f"Buy order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
@@ -81,9 +78,9 @@ class VaRTrading(QCAlgorithm):
             else:
                 self.recentSellPrice = orderEvent.FillPrice
     
-    def GetPastClosingPrices(self, daysBefore: int) -> np.array:
+    def GetPastClosingPrices(self, hoursBefore: int) -> np.array:
         pastPrices = []
-        slices = self.History(daysBefore)
+        slices = self.History(hoursBefore)
         for s in slices:
             if s.Bars.ContainsKey(self.ticker):
                 closingPrice = s.Bars[self.ticker].Close
@@ -92,9 +89,6 @@ class VaRTrading(QCAlgorithm):
     
     def CalculateVaR(self, alpha: float):
         return self.model.calculate_value_at_risk(alpha)
-    
-    def CalculateTVaR(self, alpha: float):
-        return self.model.calculate_tail_value_at_risk(alpha)
     
     def BuySignalTriggered(self, currentDayLow: float):
         var = self.CalculateVaR(1 - self.confLevel)
@@ -108,12 +102,5 @@ class VaRTrading(QCAlgorithm):
         triggered = currentDayHigh > var and self.recentBuyPrice < var
         if triggered:
             self.Log("Sell signal triggered")
-        return triggered
-    
-    def StrongSellSignalTriggered(self, currentDayHigh: float):
-        tvar = self.CalculateTVaR(self.confLevel)
-        triggered = currentDayHigh > tvar and self.recentBuyPrice < tvar
-        if triggered:
-            self.Log("Strong sell signal triggered")
         return triggered
 
