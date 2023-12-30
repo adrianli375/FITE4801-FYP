@@ -14,16 +14,18 @@ class MuscularGreenSardine(QCAlgorithm):
 
         # params
         self.setResolution = Resolution.Daily
-        self.takeProfitPercent = 0.2
-        self.stopLossPercent = 0.075
-        self.nDaysMovingAverage = 25
+        self.takeProfitPercent = None
+        self.stopLossPercent = None
+        self.nDaysMovingAverage = 5
         self.nDaysHistory = 365
         self.percentile = 0.05
+        self.extremePercentile = 0.01
 
         self.SetBrokerageModel(BrokerageName.Binance, AccountType.Margin)
 
         self.ticker = 'BTCBUSD'
         self.stock = self.AddCrypto(self.ticker, self.setResolution, Market.Binance).Symbol
+        self.stoppedTrading = False
 
     def OnData(self, data: Slice):
         if self.stock in data.Bars:
@@ -47,24 +49,33 @@ class MuscularGreenSardine(QCAlgorithm):
         pastRatios = history['Ratio'].values[:-1]
         currentRatio = history['Ratio'].values[-1]
         lowRatio, highRatio = self.getLowAndHighRatios(pastRatios, self.percentile)
+        stopTradingLowRatio, stopTradingHighRatio = self.getLowAndHighRatios(pastRatios, self.extremePercentile)
+        self.stopLossPercent = 1 - pastRatios.min()
+        self.takeProfitPercent = pastRatios.max() - 1
+
+        if currentRatio < stopTradingLowRatio or currentRatio > stopTradingHighRatio:
+            self.stoppedTrading = True
+        else:
+            self.stoppedTrading = False
 
         currentDate = self.Time.strftime("%Y-%m-%d")
 
-        if (positions > 0 and avgPrice * (1 - self.stopLossPercent) > currentPrice) or \
-            (positions < 0 and avgPrice * (1 + self.stopLossPercent) < currentPrice):
-            self.Liquidate()
-        if currentRatio < lowRatio:
-            self.Log(f'{currentDate}, Buy signal triggered, positions = {positions}')
-            if positions >= 0:
-                self.StopLimitOrder(self.stock, quantity, currentPrice * (1 - self.stopLossPercent), currentPrice)
-            elif positions < 0 and avgPrice * (1 - self.takeProfitPercent) > currentPrice:
-                self.MarketOrder(self.stock, -positions)
-        elif currentRatio > highRatio:
-            self.Log(f'{currentDate}, Sell signal triggered, positions = {positions}')
-            if positions <= 0:
-                self.StopLimitOrder(self.stock, -quantity, currentPrice * (1 + self.stopLossPercent), currentPrice)
-            elif positions > 0 and avgPrice * (1 + self.takeProfitPercent) < currentPrice:
-                self.MarketOrder(self.stock, -positions)
+        if not self.stoppedTrading:
+            if (positions > 0 and avgPrice * (1 - self.stopLossPercent) > currentPrice) or \
+                (positions < 0 and avgPrice * (1 + self.stopLossPercent) < currentPrice):
+                self.Liquidate()
+            if currentRatio < lowRatio:
+                self.Log(f'{currentDate}, Buy signal triggered, positions = {positions}')
+                if positions >= 0:
+                    self.StopLimitOrder(self.stock, quantity, currentPrice * (1 - self.stopLossPercent), currentPrice)
+                elif positions < 0 and avgPrice * (1 - self.takeProfitPercent) > currentPrice:
+                    self.MarketOrder(self.stock, -positions)
+            elif currentRatio > highRatio:
+                self.Log(f'{currentDate}, Sell signal triggered, positions = {positions}')
+                if positions <= 0:
+                    self.StopLimitOrder(self.stock, -quantity, currentPrice * (1 + self.stopLossPercent), currentPrice)
+                elif positions > 0 and avgPrice * (1 + self.takeProfitPercent) < currentPrice:
+                    self.MarketOrder(self.stock, -positions)
 
     
     def getLowAndHighRatios(self, x: np.array, percentile: float) -> (float, float):
