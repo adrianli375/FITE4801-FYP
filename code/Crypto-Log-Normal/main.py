@@ -41,7 +41,7 @@ class VaRTrading(QCAlgorithm):
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
-        self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
+        self.pastClosingPrices = self.GetPastClosingPrices(self.minutesBefore)
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
         holding = self.Portfolio[self.ticker]
         cash = self.Portfolio.Cash
@@ -81,9 +81,9 @@ class VaRTrading(QCAlgorithm):
             else:
                 self.recentSellPrice = orderEvent.FillPrice
     
-    def GetPastClosingPrices(self, daysBefore: int) -> np.array:
+    def GetPastClosingPrices(self, minutesBefore: int) -> np.array:
         pastPrices = []
-        slices = self.History(daysBefore)
+        slices = self.History(minutesBefore)
         for s in slices:
             if s.Bars.ContainsKey(self.ticker):
                 closingPrice = s.Bars[self.ticker].Close
