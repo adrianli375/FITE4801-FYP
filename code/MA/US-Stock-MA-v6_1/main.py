@@ -7,7 +7,7 @@ import numpy as np
 from keras.optimizers import SGD
 
 
-class CryptoMA(QCAlgorithm):
+class StockMA(QCAlgorithm):
     
     def Initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.'''
