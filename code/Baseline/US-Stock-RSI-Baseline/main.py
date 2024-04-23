@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import talib as tb
 
 
+# The RSI baseline trading strategy in the cryptocurrency market. 
 class USStockRSI(QCAlgorithm):
 
     def Initialize(self):
@@ -42,24 +43,31 @@ class USStockRSI(QCAlgorithm):
             data: Slice object keyed by symbol containing the stock data
         '''
 
+        # first, check the existence of the data
         if self.symbol in slice.Bars:
             trade_bar = slice.Bars[self.symbol]
             price = trade_bar.Close
             high = trade_bar.High
             low = trade_bar.Low
+        # if data does not exist, exit this function
         else:
             return
         
+        # obtain the past history of the underlying
         history = self.History(self.symbol, self.n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+        
+        # if data is incomplete, exit the function
         if 'close' not in history or history.shape[0] != self.n_days:
             return
+        
+        # obtain the RSI value
         history["RSI"] = tb.RSI(history["close"], timeperiod=14)/100
         RSI = history["RSI"].iloc[-1]
 
-        quantity = self.Portfolio[self.symbol].Quantity
-
+        # if the RSI value is below a threshold, go long
         if RSI <= self.buy_rsi:
             self.SetHoldings(self.symbol,1)
+        # otherwise, if the RSI value is above a threshold, go short
         elif RSI >= self.sell_rsi:
             self.SetHoldings(self.symbol,-1)
