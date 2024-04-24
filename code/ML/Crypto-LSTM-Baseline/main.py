@@ -12,11 +12,18 @@ BUY_SIGNAL = 1
 HOLD_SIGNAL = 0
 SELL_SIGNAL = 2
 
+# The deep learning baseline trading strategy with the use of the LSTM model in the cryptocurrency market. 
 class ML(QCAlgorithm):
+
     def TrainAlgo(self):
+        '''Trains the algorithm with the machine learning/deep learning model. '''
+        # obtains the past history
         history = self.History(self.stock, self.tradeHistory, self.setResolution)
-        if  history.shape[0] != self.tradeHistory:
+        # if the history is incomplete, early exit the function
+        if history.shape[0] != self.tradeHistory:
             return
+
+        # obtain different types of technical indicators as the input to the model
         history["MA50"] = tb.MA(history["close"], timeperiod=50)
         history["MA100"] = tb.MA(history["close"], timeperiod=100)
         history["MA200"] = tb.MA(history["close"], timeperiod=200)
@@ -30,13 +37,15 @@ class ML(QCAlgorithm):
         history["LMA50"] = (history["close"] - history["MA50"])/history["close"]
         history["LMA100"] = (history["close"] - history["MA100"])/history["close"]
         history["LMA200"] = (history["close"] - history["MA200"])/history["close"]
+
         # requirement set by the model: the class name must be non negative integers
         history["signal"] =  history["pc"].apply(lambda x: BUY_SIGNAL if x > self.npercent else (SELL_SIGNAL if x < -self.npercent else HOLD_SIGNAL))   
         
+        # define a scaler to scale all the raw inputs
         self.scaler = MinMaxScaler(feature_range=(-1, 1))
         self.output_scaler = MinMaxScaler(feature_range=(-1, 1))
 
-        #training
+        # training
         X = history[["LMA50","LMA100","LMA200","RSI","MACD"]]
         X = self.preprocess_X(X, train=True)
         if X is None:
@@ -46,6 +55,7 @@ class ML(QCAlgorithm):
         y_raw = history["lc"][self.modelpastndays:].values.reshape(-1, 1)
         y = np.squeeze(self.output_scaler.fit_transform(y_raw))
 
+        # create an instance of the model and build its architecture
         self.model = Sequential()
         self.model.add(Dense(256, activation='tanh', input_shape=(X.shape[1], X.shape[2])))
         self.model.add(Dropout(0.05))
@@ -69,13 +79,29 @@ class ML(QCAlgorithm):
         return
 
     def preprocess_X(self, X, train=False):
+        '''
+        Method to pre-process the input matrix to the model, 
+        such that it is compatible with the deep learning model format. 
+        
+        Arguments: 
+            X: The input matrix, in the format of a numpy array. 
+            train: A boolean to indicate whether the matrix is used in training or not. Default: False. 
+        '''
         output = []
+
+        # early exit if the input matrix is empty
         if X.shape[0] == 0:
             return None
+        
+        # if the matrix is not used in training, we only need to transform the value through the scaler
+        # no fitting of the scaler is performed in non-training instances
         if train:
             scaled = self.scaler.fit_transform(X)
         else:
             scaled = self.scaler.transform(X)
+        
+        # pre-process the shape of the matrix 
+        # such that it is compatible with the input format of the deep learning models
         n = scaled.shape[0]
         d = X.shape[1]
         for j in range(d):
@@ -92,6 +118,8 @@ class ML(QCAlgorithm):
             return None
         
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         self.SetStartDate(2019, 9, 1)  # Set Start Date
         self.SetEndDate(2022,12,31)
         self.SetCash(1000000)  # Set Strategy Cash
@@ -125,6 +153,13 @@ class ML(QCAlgorithm):
         self.TrainAlgo()
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # first, check the existence of the data
+        # if data does not exist, early exit this function
         if self.stock in data.Bars:
             trade_bar = data.Bars[self.stock]
             price = trade_bar.Close
@@ -133,12 +168,14 @@ class ML(QCAlgorithm):
         else:
             return
         
+        # train the model if the model is not (properly) trained
         if not self.model_trained or self.days_since_last_train >= self.modelTrainFrequency:
             self.TrainAlgo()
             self.days_since_last_train = 0
             return
         self.days_since_last_train += 1
 
+        # obtain the past history of data and obtain technical indicators
         history = self.History(self.stock, 200 + self.modelpastndays, self.setResolution)
         history["MA50"] = tb.MA(history["close"], timeperiod=50)
         history["MA100"] = tb.MA(history["close"], timeperiod=100)
@@ -154,12 +191,15 @@ class ML(QCAlgorithm):
         history["LMA100"] = (history["close"] - history["MA100"])/history["close"]
         history["LMA200"] = (history["close"] - history["MA200"])/history["close"]
         # history["signal"] =  history["n5pc"].apply(lambda x: 1 if x > 0.03 else ( -1 if x < -0.03 else 0))
+        
+        # concatenate all the technical indicators into a DataFrame (or a 2D numpy array)
         X = history[["LMA50","LMA100","LMA200","RSI","MACD"]]
         X = self.preprocess_X(X, train=False)
         if X is None:
             return
         X_test = np.array([X[-1]])
 
+        # obtain predictions from the model and generate signals
         raw_pred = self.model.predict(X_test)
         y_pred = self.output_scaler.inverse_transform(raw_pred)[0][0]
         raw_pred_value = raw_pred[0][0]
@@ -167,6 +207,7 @@ class ML(QCAlgorithm):
 
         q = self.Portfolio[self.stock].Quantity
 
+        # trade based on the model predictions and a set of defined algorithm parameters
         if abs(q*price)>100 and self.Portfolio.MarginRemaining > q * price:
             if self.exePrice == 0:
                 self.exePrice = self.Portfolio[self.stock].AveragePrice
