@@ -3,9 +3,14 @@ from AlgorithmImports import *
 # endregion
 from ModelGARCH import GarchModel
 
+# The trading strategy based on the GARCH model in the US Stock market. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process.
 class GARCHCrypto(QCAlgorithm):
 
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         # basic configs
         self.SetStartDate(2019, 9, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
@@ -41,22 +46,36 @@ class GARCHCrypto(QCAlgorithm):
         self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # preliminary check of data availability, 
+        # if data is not available, exit the function
         if not self.ticker in data:
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
+        
+        # obtain the past closing prices
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         if self.pastClosingPrices is None:
             return
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
+
+        # based on the price history, obtain the predicted quantities
         predicted, predictedStd = self.FitPredictModel()
         if predicted is None:
             return
+        
+        # obtains the current price, holding, average price and positions and the cash available
         currentPrice = data.Bars[self.ticker].Close
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
 
+        # based on the triggering of buy and sell signals, trade accordingly
         if not self.Portfolio.Invested:
             pass
             # self.SetHoldings(self.ticker, 1)
@@ -72,11 +91,15 @@ class GARCHCrypto(QCAlgorithm):
             sellPrice = round(predictedHigh, 2)
             ticket = self.LimitOrder(self.ticker, sellQuantity, sellPrice)
             self.Log(f"Sell order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
-    
-    def OnOrderEvent(self, orderEvent):
-        pass
 
     def GetPastClosingPrices(self, daysBefore: int) -> np.array:
+        '''Obtains the past closing prices. 
+
+        Arguments: 
+            daysBefore: The number of days before the current time point. 
+
+        Returns: A numpy array containing the historical closing prices for the past history requested. 
+        '''
         pastPrices = []
         slices = self.History(self.ticker, daysBefore, Resolution.Daily)
         try:
@@ -86,6 +109,7 @@ class GARCHCrypto(QCAlgorithm):
             return None
     
     def FitPredictModel(self):
+        '''Fits the GARCH model and obtain the predicted quantity. '''
         try:
             lastObsValue = self.pastClosingPrices[-1]
             self.model = GarchModel(self.pastClosingPrices, lastObsValue, p=self.GARCHp, q=self.GARCHq)
@@ -96,6 +120,14 @@ class GARCHCrypto(QCAlgorithm):
             return None, None
     
     def BuySignalTriggered(self, currentLow: float, predictedLow: float) -> bool:
+        '''Determines if the buy signal will be triggered or not. 
+        
+        Arguments: 
+            currentLow: The current low price of the underlying. 
+            predictedLow: The predicted low price of the underlying. 
+
+        Returns: Whether the buy signal is triggered or not. 
+        '''
         triggered = (currentLow < predictedLow) and (self.recentSellPrice > predictedLow)
         if triggered:
             self.Log(f"Buy signal triggered")
@@ -103,6 +135,16 @@ class GARCHCrypto(QCAlgorithm):
     
     def SellSignalTriggered(self, currentHigh: float, predictedHigh: float, volatility: float, averagePrice: float, 
                             stdDevLoading: float=1.5) -> bool:
+        '''Determines if the sell signal will be triggered or not. 
+        
+        Arguments: 
+            currentHigh: The current high price of the underlying. 
+            predictedHigh: The predicted high price of the underlying. 
+            averagePrice: The average price of the portfolio. 
+            stdDevLoading: The standard deviation loading to incorporate in the sell signal. 
+
+        Returns: Whether the sell signal is triggered or not. 
+        '''
         priceStd = volatility
         triggered = (((currentHigh > predictedHigh) and \
             (self.recentBuyPrice + stdDevLoading * priceStd < predictedHigh)) and \
