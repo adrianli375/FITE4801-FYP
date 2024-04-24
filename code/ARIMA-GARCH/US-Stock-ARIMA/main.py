@@ -3,9 +3,15 @@ from AlgorithmImports import *
 # endregion
 from ModelARIMA import ArimaModel
 
-class ARIMA1(QCAlgorithm):
+
+# The trading strategy based on the ARIMA model in the US Stock market. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process.
+class StockARIMA(QCAlgorithm):
 
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         # basic configs
         self.SetStartDate(2013, 1, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
@@ -39,18 +45,32 @@ class ARIMA1(QCAlgorithm):
         self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # preliminary check of data availability, 
+        # if data is not available, exit the function
         if not self.ticker in data:
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
+        
+        # obtain the past closing prices
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
+
+        # based on the price history, obtain the predicted quantities
         predictedLow, predicted, predictedHigh = self.FitPredictModel()
+
+        # obtains the holding, average price and positions and the cash available
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
         cashAvailable = self.Portfolio.CashBook["USD"].Amount
 
+        # based on the triggering of buy and sell signals, trade accordingly
         if not self.Portfolio.Invested:
             self.SetHoldings(self.ticker, 1)
         elif self.BuySignalTriggered(currentDayLow, predictedLow):
@@ -63,11 +83,15 @@ class ARIMA1(QCAlgorithm):
             sellPrice = round(predictedHigh, 2)
             ticket = self.LimitOrder(self.ticker, sellQuantity, sellPrice)
             self.Log(f"Sell order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
-    
-    def OnOrderEvent(self, orderEvent):
-        pass
 
     def GetPastClosingPrices(self, daysBefore: int) -> np.array:
+        '''Obtains the past closing prices. 
+
+        Arguments: 
+            daysBefore: The number of days before the current time point. 
+
+        Returns: A numpy array containing the historical closing prices for the past history requested. 
+        '''
         pastPrices = []
         slices = self.History(daysBefore)
         for s in slices:
@@ -76,6 +100,7 @@ class ARIMA1(QCAlgorithm):
         return np.array(pastPrices)
     
     def FitPredictModel(self) -> (int, int, int):
+        '''Fits the ARIMA model and obtain the predicted quantity. '''
         self.model = ArimaModel(self.pastClosingPrices, order=self.modelTSOrder, 
                                 percent_ci=self.predictionIntervalConfidenceLevel)
         self.model.fit()
@@ -83,6 +108,14 @@ class ARIMA1(QCAlgorithm):
         return lower, est, upper
     
     def BuySignalTriggered(self, currentLow: float, predictedLow: float) -> bool:
+        '''Determines if the buy signal will be triggered or not. 
+        
+        Arguments: 
+            currentLow: The current low price of the underlying. 
+            predictedLow: The predicted low price of the underlying. 
+
+        Returns: Whether the buy signal is triggered or not. 
+        '''
         triggered = (currentLow < predictedLow) and (self.recentSellPrice > predictedLow)
         if triggered:
             self.Log(f"Buy signal triggered")
@@ -90,6 +123,16 @@ class ARIMA1(QCAlgorithm):
     
     def SellSignalTriggered(self, currentHigh: float, predictedHigh: float, averagePrice: float, 
                             stdDevLoading: float=1.5) -> bool:
+        '''Determines if the sell signal will be triggered or not. 
+        
+        Arguments: 
+            currentHigh: The current high price of the underlying. 
+            predictedHigh: The predicted high price of the underlying. 
+            averagePrice: The average price of the portfolio. 
+            stdDevLoading: The standard deviation loading to incorporate in the sell signal. 
+
+        Returns: Whether the sell signal is triggered or not. 
+        '''
         priceStd = self.pastClosingPrices.std()
         triggered = (((currentHigh > predictedHigh) and \
             (self.recentBuyPrice + stdDevLoading * priceStd < predictedHigh)) and \

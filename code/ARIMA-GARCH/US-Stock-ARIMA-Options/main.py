@@ -4,9 +4,15 @@ from AlgorithmImports import *
 from ModelARIMA import ArimaModel
 from typing import Union
 
+
+# The trading strategy based on the ARIMA model and options trading in the US Stock market. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process.
 class ARIMAOptions(QCAlgorithm):
 
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         # basic configs
         self.SetStartDate(2013, 1, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
@@ -52,12 +58,20 @@ class ARIMAOptions(QCAlgorithm):
         self.optionInvested = False
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # preliminary check of data availability, 
+        # if data is not available, exit the function
         if not self.ticker in data:
             return
         if not data.ContainsKey(self.ticker):
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
+        
         # 1. fit ARIMA(1, 1, 1) model daily to the past prices of the underlying
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         if self.pastClosingPrices is None:
@@ -65,6 +79,7 @@ class ARIMAOptions(QCAlgorithm):
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
         currentPrice = data.Bars[self.ticker].Close
         predictedLow, predicted, predictedHigh = self.FitPredictModel()
+
         # 2. get the holding, price, positions and cash available
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
@@ -97,7 +112,9 @@ class ARIMAOptions(QCAlgorithm):
         if underlyingInvested:
             if positions < 100:
                 self.Liquidate()
+        
         # 3. from the predicted values, get the options that are closest to the predicted value and upper/lower bound
+        # based on different rules, trade with the corresponding options involved
         # updated trading strategy based on https://slashtraders.com/en/blog/sp500-spy-etf-wheel-strategy/
         if not underlyingInvested and not optionsInvested and self.state == 0:
             try:
@@ -163,11 +180,15 @@ class ARIMAOptions(QCAlgorithm):
         elif not underlyingInvested and not optionsInvested and self.state == 2:
             self.state = 0
         self.Log(str(self.Time) + f'options invested: {optionsInvested}' + f'underlying invested: {underlyingInvested}' + f'state: {self.state}')
-    
-    def OnOrderEvent(self, orderEvent):
-        pass
 
     def GetPastClosingPrices(self, daysBefore: int) -> Union[np.array, None]:
+        '''Obtains the past closing prices. 
+
+        Arguments: 
+            daysBefore: The number of days before the current time point. 
+
+        Returns: A numpy array containing the historical closing prices for the past history requested. 
+        '''
         pastPrices_df = self.History([self.ticker], daysBefore)
         if len(pastPrices_df) == 0:
             return None
@@ -175,6 +196,7 @@ class ARIMAOptions(QCAlgorithm):
         return np.array(pastPrices)
     
     def FitPredictModel(self) -> (int, int, int):
+        '''Fits the ARIMA model and obtain the predicted quantity. '''
         self.model = ArimaModel(self.pastClosingPrices, order=self.modelTSOrder, 
                                 percent_ci=self.predictionIntervalConfidenceLevel)
         self.model.fit()
@@ -182,10 +204,17 @@ class ARIMAOptions(QCAlgorithm):
         return lower, est, upper
 
     def underlyingInvested(self) -> bool:
+        '''Determines if the underlying stock is invested or not. 
+        
+        Returns: Whether the underlying stock is invested or not. 
+        '''
         holding = self.Portfolio[self.ticker]
         return holding.Invested
     
     def optionsInvested(self) -> bool:
+        '''Determines if options are invested in the portfolio or not. 
+        
+        Returns: whether the options are invested in the portfolio or not. '''
         invested = False
         for symbol in self.Portfolio.keys():
             # self.Debug(f"Symbol: {symbol}")
@@ -198,6 +227,14 @@ class ARIMAOptions(QCAlgorithm):
         return invested
     
     def getCall(self, chain: OptionChain, price: float):
+        '''Obtains the call option contract given the option chain and strike price. 
+        
+        Arguments:
+            chain: The option chain. 
+            price: The strike price. 
+
+        Returns: The corresponding call option contract
+        '''
         # Get the ATM strike price
         atm_strike = sorted(chain, key = lambda x: abs(price - x.Strike))[0].Strike
         # Select the ATM call Option contracts
@@ -210,6 +247,14 @@ class ARIMAOptions(QCAlgorithm):
         return contract
     
     def getPut(self, chain: OptionChain, price: float):
+        '''Obtains the put option contract given the option chain and strike price. 
+        
+        Arguments:
+            chain: The option chain. 
+            price: The strike price. 
+
+        Returns: The corresponding put option contract
+        '''
         # Get the ATM strike price
         atm_strike = sorted(chain, key = lambda x: abs(price - x.Strike))[0].Strike
         # Select the ATM call Option contracts
@@ -220,7 +265,4 @@ class ARIMAOptions(QCAlgorithm):
         contracts = sorted(puts, key=lambda x: abs(price - x.Strike))
         contract = contracts[0]
         return contract
-
-    
-
     

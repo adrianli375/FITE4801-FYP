@@ -3,9 +3,15 @@ from AlgorithmImports import *
 # endregion
 from ModelARIMA import ArimaModel
 
+
+# The trading strategy based on the ARIMA model in the cryptocurrency market. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process. 
 class ARIMACrypto(QCAlgorithm):
 
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         # basic configs
         self.SetStartDate(2019, 9, 1)  # Set Start Date
         self.SetEndDate(2022, 12, 31)
@@ -39,22 +45,36 @@ class ARIMACrypto(QCAlgorithm):
         self.stopLossRatio = 0.95
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # preliminary check of data availability, 
+        # if data is not available, exit the function
         if not self.ticker in data:
             return
         if not data.Bars.ContainsKey(self.ticker):
             return
+        
+        # obtain the past closing prices
         self.pastClosingPrices = self.GetPastClosingPrices(self.daysBefore)
         if self.pastClosingPrices is None:
             return
         currentDayLow, currentDayHigh = data.Bars[self.ticker].Low, data.Bars[self.ticker].High
+
+        # based on the price history, obtain the predicted quantities
         predictedLow, predicted, predictedHigh = self.FitPredictModel()
         if predictedLow is None or predicted is None or predictedHigh is None:
             return
+        
+        # obtains the current price, holding, average price and positions
         currentPrice = data.Bars[self.ticker].Close
         holding = self.Portfolio[self.ticker]
         averagePrice = holding.AveragePrice
         positions = holding.Quantity
 
+        # based on the triggering of buy and sell signals, trade accordingly
         if not self.Portfolio.Invested:
             self.SetHoldings(self.ticker, 1)
         elif self.BuySignalTriggered(currentDayLow, predictedLow):
@@ -67,11 +87,15 @@ class ARIMACrypto(QCAlgorithm):
             sellPrice = round(predictedHigh, 2)
             ticket = self.LimitOrder(self.ticker, sellQuantity, sellPrice)
             self.Log(f"Sell order: Quantity filled: {ticket.QuantityFilled}; Fill price: {ticket.AverageFillPrice}")
-    
-    def OnOrderEvent(self, orderEvent):
-        pass
 
     def GetPastClosingPrices(self, daysBefore: int) -> np.array:
+        '''Obtains the past closing prices. 
+
+        Arguments: 
+            daysBefore: The number of days before the current time point. 
+
+        Returns: A numpy array containing the historical closing prices for the past history requested. 
+        '''
         pastPrices = []
         slices = self.History(self.ticker, daysBefore, Resolution.Daily)
         try:
@@ -81,6 +105,7 @@ class ARIMACrypto(QCAlgorithm):
             return None
     
     def FitPredictModel(self) -> (int, int, int):
+        '''Fits the ARIMA model and obtain the predicted quantity. '''
         if len(self.pastClosingPrices) <= 2:
             return None, None, None
         try:
@@ -93,6 +118,14 @@ class ARIMACrypto(QCAlgorithm):
             return None, None, None
     
     def BuySignalTriggered(self, currentLow: float, predictedLow: float) -> bool:
+        '''Determines if the buy signal will be triggered or not. 
+        
+        Arguments: 
+            currentLow: The current low price of the underlying. 
+            predictedLow: The predicted low price of the underlying. 
+
+        Returns: Whether the buy signal is triggered or not. 
+        '''
         triggered = (currentLow < predictedLow) and (self.recentSellPrice > predictedLow)
         if triggered:
             self.Log(f"Buy signal triggered")
@@ -100,6 +133,16 @@ class ARIMACrypto(QCAlgorithm):
     
     def SellSignalTriggered(self, currentHigh: float, predictedHigh: float, averagePrice: float, 
                             stdDevLoading: float=1.5) -> bool:
+        '''Determines if the sell signal will be triggered or not. 
+        
+        Arguments: 
+            currentHigh: The current high price of the underlying. 
+            predictedHigh: The predicted high price of the underlying. 
+            averagePrice: The average price of the portfolio. 
+            stdDevLoading: The standard deviation loading to incorporate in the sell signal. 
+
+        Returns: Whether the sell signal is triggered or not. 
+        '''
         priceStd = self.pastClosingPrices.std()
         triggered = (((currentHigh > predictedHigh) and \
             (self.recentBuyPrice + stdDevLoading * priceStd < predictedHigh)) and \
