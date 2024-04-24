@@ -7,9 +7,15 @@ from datetime import timedelta
 
 from loadModel import load_model
 
-class BitcoinMachineLearningAlgorithm(QCAlgorithm):
+
+# The trading strategy based on cryptocurrency metadata with machine learning. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process. 
+class BitcoinMetadataAlgorithm(QCAlgorithm):
     
     def Initialize(self) -> None:
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         self.SetStartDate(2019, 9, 1)   # Set Start Date
         self.SetEndDate(2022, 12, 31)    # Set End Date
         self.SetCash(1000000)
@@ -49,6 +55,7 @@ class BitcoinMachineLearningAlgorithm(QCAlgorithm):
         self.trainModel()
 
     def trainModel(self) -> None:
+        '''Trains the model. '''
         ### preprocessing
         ### Historical data
         metadata = self.History(BitcoinMetadata, self.metadataSymbol, self.tradeHistory, self.resolution)
@@ -56,11 +63,16 @@ class BitcoinMachineLearningAlgorithm(QCAlgorithm):
         self.Debug(history.shape)
         self.Debug(f"We got {len(history)} items from our history request for {self.ticker} Blockchain Bitcoin Metadata")
         # self.Debug(f"The time is {self.Time}")
+
+        # obtain the future close price and the returns
         history['closeAfterFewDays'] = history['close'].shift(-self.tradePeriod)
         history['returns'] = history['closeAfterFewDays'] / history['close'] - 1
         history.dropna(inplace=True)
+
+        # obtain the signal (buy, sell or hold)
         history['signal'] = history['returns'].apply(lambda x: 1 if x > self.npercent else (-1 if x < -self.npercent else 0))
         
+        # update the metadata dataframe
         metadata['signal'] = np.nan
         metadataSignalIdx = list(metadata.columns).index('signal')
         historySignalIdx = list(history.columns).index('signal')
@@ -81,12 +93,20 @@ class BitcoinMachineLearningAlgorithm(QCAlgorithm):
 
         self.Log(f'The validation score of the model is {self.model.score(X_valid, y_valid)}')
     
+
     def OnData(self, slice: Slice) -> None:
-        ### Retrieving data
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            slice: Slice object keyed by symbol containing the stock data
+        '''
+
+        ### Retrieving data (Bitcoin metadata)
         data = slice.Get(BitcoinMetadata)
         if not data.ContainsKey(self.metadataSymbol):
             return
         latestMetadata = data[self.metadataSymbol]
+
+        # obtain the latest series of Bitcoin metadata (total 23 features)
         X_pred = np.array([
             latestMetadata.AverageBlockSize, latestMetadata.BlockchainSize,
             latestMetadata.CostPercentofTransactionVolume, latestMetadata.CostPerTransaction, 
@@ -188,6 +208,7 @@ class BitcoinMachineLearningAlgorithm(QCAlgorithm):
             else:
                 self.exePrice = 0
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
+                # place market orders when the model is confident enough
                 if modelConfidence >= self.tradeConfidenceLevel:
                     quantity = int(cashAvailable / currentPrice)
                     self.MarketOrder(self.ticker, quantity)

@@ -7,7 +7,16 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import make_pipeline
 from sklearn.svm import SVC
 
+
+# a method to load the model for the crypto metadata strategy
 def load_model(model_name: str):
+    '''Loads the model. 
+    
+    Arguments: 
+        model_name: The model name. 
+    
+    Returns: The model object. 
+    '''
     if model_name not in {
         'rf', 'lr', 'svm', 'gb', 'knn', 'stacking', 'votinghard', 'votingsoft'
     }:
