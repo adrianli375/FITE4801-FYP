@@ -2,6 +2,7 @@ from AlgorithmImports import *
 from datetime import datetime, timedelta
 
 
+# The moving average baseline trading strategy in the US stock market. 
 class StockMA(QCAlgorithm):
 
     def Initialize(self):
@@ -38,53 +39,45 @@ class StockMA(QCAlgorithm):
             data: Slice object keyed by symbol containing the stock data
         '''
 
+        # first, check the existence of the data
         if self.symbol in slice.Bars:
             trade_bar = slice.Bars[self.symbol]
             price = trade_bar.Close
             high = trade_bar.High
             low = trade_bar.Low
+        # if data does not exist, exit this function
         else:
             return
         
+        # obtain the past history of the underlying
         df = self.History(self.symbol, self.n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+
+        # if data is incomplete, exit the function
         if 'close' not in df or df.shape[0] != self.n_days:
             return
+        
+        # calculate the moving average of the underlying
         MA = df['close'].mean()
 
         quantity = self.Portfolio[self.symbol].Quantity
 
-        # if abs(quantity)*price > 10:
-        #     if self.cont_liquidate:
-        #         ticket = self.MarketOrder(self.symbol, -quantity)
-        #         if ticket.QuantityFilled != -quantity:
-        #             self.cont_liquidate = True
-        #     elif self.strikethrough == "Upper":
-        #         if price <= MA:
-        #             self.Log("Pass MA: sell")
-        #             ticket = self.MarketOrder(self.symbol, -quantity)
-        #             if ticket.QuantityFilled != -quantity:
-        #                 self.cont_liquidate = True
-        #     elif self.strikethrough == "Lower":
-        #         if price >= MA:
-        #             self.Log("Pass MA: buy back")
-        #             ticket = self.MarketOrder(self.symbol, -quantity)
-        #             if ticket.QuantityFilled != -quantity:
-        #                 self.cont_liquidate = True
-        # else:
-        #     self.cont_liquidate = False
-        #     # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
+        # if the price position of the upper line is lower
+        # and the underlying price exceeds the MA line, buy (long) the underlying
         if self.upperlinepos == "Lower" and price >= MA:
             self.SetHoldings(self.symbol,1)
+        # if the price position of the upper line is upper
+        # and the underlying price falls below the MA line, sell (short) the underlying
         if self.upperlinepos == "Upper" and price <= MA:
             self.SetHoldings(self.symbol,-1)
         
+        # update the positions of the upper and lower line
         if price >= MA:
             self.upperlinepos = "Upper"
         else:
             self.upperlinepos = "Lower"
         
-        # if price <= MA:
-        #     self.lowerlinepos = "Lower"
-        # else:
-        #     self.lowerlinepos = "Upper"
+        if price <= MA:
+            self.lowerlinepos = "Lower"
+        else:
+            self.lowerlinepos = "Upper"

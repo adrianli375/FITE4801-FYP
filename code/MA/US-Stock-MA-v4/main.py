@@ -2,6 +2,7 @@ from AlgorithmImports import *
 from datetime import datetime, timedelta
 
 
+# Version 4 of the algorithm in the US stock market. 
 class StockMA(QCAlgorithm):
 
     def Initialize(self):
@@ -50,35 +51,53 @@ class StockMA(QCAlgorithm):
             data: Slice object keyed by symbol containing the stock data
         '''
 
+        # first, check the existence of the data
         if self.symbol in slice.Bars:
             trade_bar = slice.Bars[self.symbol]
             price = trade_bar.Close
             high = trade_bar.High
             low = trade_bar.Low
+        # if data does not exist, exit this function
         else:
             return
         
+        # obtain the past history of the underlying
         df = self.History(self.symbol, self.n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+
+        # if data is incomplete, exit the function
         if 'close' not in df or df.shape[0] != self.n_days:
             return
+        
+        # calculate the moving average of the underlying
         MA = df['close'].mean()
 
+        # obtain the past history of the underlying
         df2 = self.History(self.symbol, self.close_n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+        
+        # if data is incomplete, exit the function
         if 'close' not in df2 or df2.shape[0] != self.close_n_days:
             return
+        
+        # calculate the moving average of the underlying to close trades
         close_MA = df2['close'].mean()
 
         quantity = self.Portfolio[self.symbol].Quantity
 
+        # obtain the past volatility of the underlying stock
         df3 = self.History(self.symbol, self.volatility_n_days, Resolution.Daily)
+        
+        # determine the width of the MA bands based on past volatility
         self.percent_above = df3['close'].pct_change().dropna().std() * self.volatility_coefficient
         
+        # determine the width of the MA bands to close trades based on past volatility
         if self.close_percent_above:
             df4 = self.History(self.symbol, self.close_volatility_n_days, Resolution.Daily)
             self.close_above = df4['close'].pct_change().dropna().std() * self.close_volatility_coefficient
 
+        # check for conditions to close the position and execute market orders
+        # the MA bands are used to close the positions in this version
         if abs(quantity)*price > 10:
             self.highwatermark = max(price,self.highwatermark)
             self.lowwatermark = min(price,self.lowwatermark)
@@ -116,9 +135,13 @@ class StockMA(QCAlgorithm):
                     ticket = self.MarketOrder(self.symbol, -quantity)
                     if ticket.QuantityFilled != -quantity:
                         self.cont_liquidate = True
+        # otherwise, trade accordingly
         else:
             self.cont_liquidate = False
             # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
+            
+            # if the price position of the upper line is lower
+            # and the underlying price exceeds the upper MA band, buy (long) the underlying
             if self.upperlinepos == "Lower" and price >= MA*(1+self.percent_above):
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.symbol, q)
@@ -127,6 +150,9 @@ class StockMA(QCAlgorithm):
                 self.highwatermark = price
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
+            
+            # if the price position of the upper line is upper
+            # and the underlying price falls below the lower MA band, sell (short) the underlying
             if self.lowerlinepos == "Upper" and price <= MA/(1+self.percent_above):
                 q = self.Portfolio.Cash/price
                 ticket = self.MarketOrder(self.symbol, -q)
@@ -136,6 +162,7 @@ class StockMA(QCAlgorithm):
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
         
+        # update the positions of the upper and lower line
         if price >= MA*(1+self.percent_above):
             self.upperlinepos = "Upper"
         else:
