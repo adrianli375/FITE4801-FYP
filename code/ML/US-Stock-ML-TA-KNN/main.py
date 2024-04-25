@@ -6,9 +6,17 @@ from sklearn.neighbors import KNeighborsRegressor
 from datetime import datetime, timedelta
 from sklearn.preprocessing import StandardScaler
 
-class SmoothYellowGreenAlpaca(QCAlgorithm):
+# The machine learning baseline trading strategy with the use of the k-nearest neighbours classifier in the US stock market. 
+# NOTE: This algorithm is not published in the report and final results, 
+# and it is only involved in the preliminary development process. 
+class ML(QCAlgorithm):
+
     def TrainAlgo(self):
+        '''Trains the algorithm with the machine learning/deep learning model. '''
+        # obtains the past history
         history = self.History(self.stock, self.tradeHistory, self.setResolution)
+        
+        # obtain different types of technical indicators as the input to the model
         history["MA50"] = tb.MA(history["close"], timeperiod=50)
         history["MA100"] = tb.MA(history["close"], timeperiod=100)
         history["MA200"] = tb.MA(history["close"], timeperiod=200)
@@ -30,9 +38,11 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         history["LMA200"] = (history["close"] - history["MA200"])/history["close"]
         history["signal"] =  history["n5pc"].apply(lambda x: 1 if x > self.npercent else ( -1 if x < -self.npercent else 0))   
         
+        # define a scaler to scale all the raw inputs
         self.scaler = StandardScaler()
 
-        #training
+        # training
+        # create an instance of the model and build its architecture
         self.knn_model = KNeighborsRegressor(n_neighbors=self.n_neighbors)
         X = history[["LMA50","LMA100","LMA200","RSI","MACD","pc"]]
         X = self.scaler.fit_transform(X)
@@ -41,6 +51,8 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         return
 
     def Initialize(self):
+        '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
+        All algorithms must be initialized before performing testing.'''
         self.SetStartDate(2013, 1, 1)  # Set Start Date
         self.SetEndDate(2022,12,31)
         self.SetCash(1000000)  # Set Strategy Cash
@@ -71,6 +83,13 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         self.TrainAlgo()
 
     def OnData(self, data: Slice):
+        '''OnData event is the primary entry point for your algorithm. Each new data point will be pumped in here.
+        Arguments:
+            data: Slice object keyed by symbol containing the stock data
+        '''
+
+        # first, check the existence of the data
+        # if data does not exist, early exit this function
         if self.stock in data.Bars:
             trade_bar = data.Bars[self.stock]
             price = trade_bar.Close
@@ -79,6 +98,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         else:
             return
 
+        # obtain the past history of data and obtain technical indicators
         history = self.History(self.stock, 205, self.setResolution)
         history["MA50"] = tb.MA(history["close"], timeperiod=50)
         history["MA100"] = tb.MA(history["close"], timeperiod=100)
@@ -94,25 +114,35 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
         history["LMA100"] = (history["close"] - history["MA100"])/history["close"]
         history["LMA200"] = (history["close"] - history["MA200"])/history["close"]
         # history["signal"] =  history["n5pc"].apply(lambda x: 1 if x > 0.03 else ( -1 if x < -0.03 else 0))
+        
+        # concatenate all the technical indicators into a DataFrame (or a 2D numpy array)
         X = [history.iloc[-1][["LMA50","LMA100","LMA200","RSI","MACD","pc"]]]
         X = self.scaler.transform(X)
+
+        # obtain predictions from the model and generate signals
         signal = self.knn_model.predict(X)
 
         q = self.Portfolio[self.stock].Quantity
 
+        # trade based on the model predictions and a set of defined algorithm parameters
         if abs(q*price)>100:
             if self.exePrice == 0:
                 self.exePrice = self.Portfolio[self.stock].AveragePrice
             sell = False
+
+            # obtain the date of the last trade, and to update signals accordingly
             his = self.History(self.stock, self.tradePeriod+1, self.setResolution)
             # self.Log(his)
             # self.Log(his.index[0])
+            
+            # if the number of days since the last trade expires, it will exit the trade positions
             if self.sellatndays:
                 # delta = timedelta(hours=self.tradePeriod) if self.setResolution == Resolution.Hour else timedelta(days=self.tradePeriod)
                 if self.placedTrade <= his.index[0][1].strftime("%Y-%m-%d"):
                     sell = True
                     self.Log(f"Time expired: {his.index[0][1].strftime('%Y-%m-%d')}")
             
+            # if there is update in the signal, extend the holding period
             if self.extendWhenSignalled:
                 if (signal >= self.tradeConfidenceLevel and q > 0) or (signal <= -self.tradeConfidenceLevel and q < 0):
                     self.placedTrade = self.Time.strftime("%Y-%m-%d") #extend
@@ -120,11 +150,13 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                         self.exePrice = price
                     self.Log(f"Time extended")
             
+            # if there are changes in the trading signal, update the sell signal
             if self.sellWhenSignalChange:
                 if (signal >= self.tradeConfidenceLevel and q < 0) or (signal <= -self.tradeConfidenceLevel and q > 0):
                     sell = True
                     self.Log(f"Signal Changed: sell")
 
+            # if it is not a sell signal and set to be sold at a fixed percentage (n%), trade
             if not sell and self.sellatnpercent:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
                 if q>0:
@@ -132,8 +164,10 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                 else:
                     self.LimitOrder(self.stock, -q, self.exePrice * (1 - self.npercent) , tag="take profit")
             
+            # if it is not a sell signal and set to have a stop loss percentage, trade
             if not sell and self.stoplosspercent>0:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
+                # if the portfolio quantity is positive, execute a stop loss sell order
                 if q>0:
                     if price < self.exePrice * (1 - self.stoplosspercent):
                         self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
@@ -141,6 +175,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                         self.Log(f"Stop Loss, price: {price}")
                     else:
                         self.StopLimitOrder(self.stock, -q, self.exePrice * (1 - self.stoplosspercent), self.exePrice * (1 - self.stoplosspercent))
+                # otherwise, if the portfolio quantity is negative, execute a stop buy order
                 else:
                     if price > self.exePrice * (1 + self.stoplosspercent):
                         self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
@@ -149,8 +184,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                     else:
                         self.StopLimitOrder(self.stock, -q, self.exePrice * (1 + self.stoplosspercent), self.exePrice * (1 + self.stoplosspercent))
 
-
-            
+            # if a sell signal is triggered, execute sell orders
             if sell:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
                 if self.sellAtOpen:
@@ -158,9 +192,11 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                 else:
                     ticket = self.MarketOnCloseOrder(self.stock, -q)
                 
+        # if there are no positions, trade accordingly
         else:
             self.exePrice = 0
             self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
+            # place a buy order if a buy signal is triggered
             if signal >= self.tradeConfidenceLevel:
                 q = self.Portfolio.Cash/price 
                 if self.buyAtOpen:
@@ -170,6 +206,7 @@ class SmoothYellowGreenAlpaca(QCAlgorithm):
                 self.Log(f"Price: {price}, signal: {signal}, buy {q}")
                 self.traded = True
                 self.placedTrade = self.Time.strftime("%Y-%m-%d")
+            # place a sell order is a sell signal is triggered
             elif signal <= -self.tradeConfidenceLevel:
                 q = self.Portfolio.Cash/price 
                 if self.buyAtOpen:
