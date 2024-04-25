@@ -7,6 +7,9 @@ import numpy as np
 from keras.optimizers import SGD
 
 
+# Version 7 of the algorithm in the cryptocurrency market. 
+# Implementation of past loss adjustments based on Version 5, with LSTM model and progressive retrain. 
+# NOTE: This code is not used in the final algorithm. 
 class CryptoMA(QCAlgorithm):
     
     def Initialize(self):
@@ -63,10 +66,15 @@ class CryptoMA(QCAlgorithm):
         self.train = False
 
     def TrainAlgo(self):
+        '''Trains the algorithm with the deep learning model. '''
+        # obtains the past history
         history = self.History(self.symbol, self.resolution, Resolution.Daily)
+
+        # if the history is incomplete, early exit the function
         if history.shape[0] != self.resolution:
             return
        
+        # obtain open, high, low, close and volume as the input to the model
         open = history["open"].values
         high = history["high"].values
         low = history["low"].values
@@ -74,16 +82,19 @@ class CryptoMA(QCAlgorithm):
         volume = history["volume"].values
         x_train = []
         y_train = []
+
+        # inputs: open, high, low, close and volume
+        # output: future volatility after self.volatility_n_days
         for i in range(self.past_volatility_n_days,len(close)-self.volatility_n_days):
             x_train.append([open[i-self.past_volatility_n_days:i],high[i-self.past_volatility_n_days:i],low[i-self.past_volatility_n_days:i],close[i-self.past_volatility_n_days:i],volume[i-self.past_volatility_n_days:i]])
             y_train.append([pd.DataFrame({"Close":close[i:i+self.volatility_n_days]})["Close"].pct_change().dropna().std()])
-        #Model
 
         x_train = np.array(x_train)
         y_train = np.array(y_train)
 
+        # create an instance of the model and build its architecture
         self.regressorLSTM = Sequential()
-        # First LSMT layer
+        # First LSTM layer
         self.regressorLSTM.add(LSTM(units=512, return_sequences=True, input_shape=(x_train.shape[1],self.past_volatility_n_days)))
         self.regressorLSTM.add(Dropout(0.2))
         # Second LSTM layer
@@ -104,10 +115,17 @@ class CryptoMA(QCAlgorithm):
         return
 
     def retrainAlgo(self):
+        '''Retrains the deep learning model with the progressive retrain mechanism. 
+        This retrain mechanism introduces new, recent data to the model. 
+        '''
+        # obtains the past history
         history = self.History(self.symbol, self.retrain, Resolution.Daily)
+
+        # if the history is incomplete, early exit the function
         if history.shape[0] != self.retrain:
             return
        
+        # obtain open, high, low, close and volume as the input to the model
         open = history["open"].values
         high = history["high"].values
         low = history["low"].values
@@ -115,17 +133,22 @@ class CryptoMA(QCAlgorithm):
         volume = history["volume"].values
         x_train = []
         y_train = []
+
+        # inputs: open, high, low, close and volume
+        # output: future volatility after self.volatility_n_days
         for i in range(self.past_volatility_n_days,len(close)-self.volatility_n_days):
             x_train.append([open[i-self.past_volatility_n_days:i],high[i-self.past_volatility_n_days:i],low[i-self.past_volatility_n_days:i],close[i-self.past_volatility_n_days:i],volume[i-self.past_volatility_n_days:i]])
             y_train.append([pd.DataFrame({"Close":close[i:i+self.volatility_n_days]})["Close"].pct_change().dropna().std()])
-        #Model
 
         x_train = np.array(x_train)
         y_train = np.array(y_train)
 
+        # retrain the model with the new data feed
         self.regressorLSTM.fit(x_train,y_train,epochs=50,validation_split=0.1,batch_size=150)
 
         self.train = True
+
+        # updates the latest training time of the algo
         self.lasttraintime = self.Time
         return
 
@@ -136,28 +159,38 @@ class CryptoMA(QCAlgorithm):
             data: Slice object keyed by symbol containing the stock data
         '''
 
+        # first, check the existence of the data
         if self.symbol in slice.Bars:
             trade_bar = slice.Bars[self.symbol]
             price = trade_bar.Close
             high = trade_bar.High
             low = trade_bar.Low
+        # if data does not exist, exit this function
         else:
             return
 
+        # if the model is not trained or it is time for a retrain
+        # we train the model
         if self.train and self.lasttraintime + timedelta(days=self.retrain) < self.Time:
             self.retrainAlgo()
         
+        # if the model is not trained or it is time for a retrain
+        # we first train the model
         if not self.train:
             self.TrainAlgo()
             if not self.train:
                 return
         
+        # obtain the past history of the underlying
         df = self.History(self.symbol, self.n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+
+        # if data is incomplete, exit the function
         if 'close' not in df or df.shape[0] != self.n_days:
             return
 
         ### (v5) Analysis to calculate MA
+        # dynamic MA is calculated based on the number of peaks and troughs
 
         lastmax = 0
         lastmaxindex = 0
@@ -234,13 +267,19 @@ class CryptoMA(QCAlgorithm):
         if final_MA < self.min_MA:
             final_MA = self.min_MA
 
+        ### end of dynamic MA calculation
+
         df = self.History(self.symbol, final_MA, Resolution.Daily)
+
+        # calculate the moving average of the underlying
         MA = df['close'].mean()
 
+        # the same pair of MA bands is used to close trades
         close_MA = MA
 
         quantity = self.Portfolio[self.symbol].Quantity
 
+        # obtain the recent open, high, low, close and volume data for model prediction
         df3 = self.History(self.symbol, self.past_volatility_n_days, Resolution.Daily)
         open = df3["open"].values
         high = df3["high"].values
@@ -249,13 +288,17 @@ class CryptoMA(QCAlgorithm):
         volume = df3["volume"].values
 
         x_test = np.array([[open,high,low,close,volume]])
+
+        # predict the future volatility
         try:
             y_predict = self.regressorLSTM.predict(x_test)
         except:
             return
         # y_predict = np.squeeze(y_predict)
         # self.Log(y_predict)
+
         ### (v7) Past trades control
+        # calculates the number of trades which incur losses
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss
@@ -269,12 +312,16 @@ class CryptoMA(QCAlgorithm):
         pnl_count = max(pnl_count,0)
         ### End (v7)
 
+        # determine the width of the MA bands based on future volatility prediction of the LSTM model
         self.percent_above = y_predict[0] * self.volatility_coefficient + pnl_count * self.penalty_coefficient
         if self.adjustCloseVol:
+            # penalty term added to close trades
             self.close_above = y_predict[0] * self.close_volatility_coefficient + pnl_count * self.penalty_coefficient
         else:
             self.close_above = y_predict[0] * self.close_volatility_coefficient
 
+        # check for conditions to close the position and execute market orders
+        # the MA bands are used to close the positions in this version
         if abs(quantity)*price > 10:
             self.highwatermark = max(price,self.highwatermark)
             self.lowwatermark = min(price,self.lowwatermark)
@@ -307,9 +354,13 @@ class CryptoMA(QCAlgorithm):
                     ticket = self.MarketOrder(self.symbol, -quantity)
                     if ticket.QuantityFilled != -quantity:
                         self.cont_liquidate = True
+        # otherwise, trade accordingly
         else:
             self.cont_liquidate = False
             # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
+            
+            # if the price position of the upper line is lower
+            # and the underlying price exceeds the upper MA band, buy (long) the underlying
             if self.upperlinepos == "Lower" and price >= MA*(1+self.percent_above):
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.symbol, q)
@@ -318,6 +369,9 @@ class CryptoMA(QCAlgorithm):
                 self.highwatermark = price
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
+            
+            # if the price position of the upper line is upper
+            # and the underlying price falls below the lower MA band, sell (short) the underlying
             if self.lowerlinepos == "Upper" and price <= MA/(1+self.percent_above):
                 q = self.Portfolio.Cash/price
                 ticket = self.MarketOrder(self.symbol, -q)
@@ -327,6 +381,7 @@ class CryptoMA(QCAlgorithm):
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
         
+        # update the positions of the upper and lower line
         if price >= MA*(1+self.percent_above):
             self.upperlinepos = "Upper"
         else:

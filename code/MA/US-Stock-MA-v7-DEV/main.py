@@ -2,6 +2,9 @@ from AlgorithmImports import *
 from datetime import datetime, timedelta
 
 
+# Version 7 of the algorithm in the US stock market. 
+# Implementation of past loss adjustments based on Version 5, without LSTM model. 
+# NOTE: This code is not used in the final algorithm. 
 class StockMA(QCAlgorithm):
 
     def Initialize(self):
@@ -60,20 +63,26 @@ class StockMA(QCAlgorithm):
             data: Slice object keyed by symbol containing the stock data
         '''
 
+        # first, check the existence of the data
         if self.symbol in slice.Bars:
             trade_bar = slice.Bars[self.symbol]
             price = trade_bar.Close
             high = trade_bar.High
             low = trade_bar.Low
+        # if data does not exist, exit this function
         else:
             return
         
+        # obtain the past history of the underlying
         df = self.History(self.symbol, self.n_days, Resolution.Daily)
         # self.Log(f"{'close' in df} {df.shape[0]}")
+        
+        # if data is incomplete, exit the function
         if 'close' not in df or df.shape[0] != self.n_days:
             return
 
-        ### (v5) Analysis to calculate MA
+        ### (v5) Analysis to calculate MA (dynamic MA)
+        # dynamic MA is calculated based on the number of peaks and troughs
 
         lastmax = 0
         lastmaxindex = 0
@@ -150,14 +159,20 @@ class StockMA(QCAlgorithm):
         if final_MA < self.min_MA:
             final_MA = self.min_MA
 
+        ### end of dynamic MA calculation
+
         df = self.History(self.symbol, final_MA, Resolution.Daily)
+
+        # calculate the moving average of the underlying
         MA = df['close'].mean()
 
+        # the same pair of MA bands is used to close trades
         close_MA = MA
 
         quantity = self.Portfolio[self.symbol].Quantity
 
         ### (v7) Past trades control
+        # calculates the number of trades which incur losses
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss
@@ -171,15 +186,24 @@ class StockMA(QCAlgorithm):
         pnl_count = max(pnl_count,0)
         ### End (v7)
 
+        # obtain the past price data of the underlying stock
         df3 = self.History(self.symbol, self.volatility_n_days, Resolution.Daily)
+        
+        # determine the width of the MA bands based on past volatility
         self.percent_above = df3['close'].pct_change().dropna().std() * self.volatility_coefficient
         
+        # obtain the past volatility of the underlying stock
         df4 = self.History(self.symbol, self.close_volatility_n_days, Resolution.Daily)
+        
+        # determine the width of the MA bands based on past volatility to close trades
         if self.adjustCloseVol:
+            # penalty term added to close trades
             self.close_above = df4['close'].pct_change().dropna().std() * self.close_volatility_coefficient + pnl_count * self.penalty_coefficient
         else:
             self.close_above = df4['close'].pct_change().dropna().std() * self.close_volatility_coefficient
 
+        # check for conditions to close the position and execute market orders
+        # the MA bands are used to close the positions in this version
         if abs(quantity)*price > 10:
             self.highwatermark = max(price,self.highwatermark)
             self.lowwatermark = min(price,self.lowwatermark)
@@ -212,9 +236,13 @@ class StockMA(QCAlgorithm):
                     ticket = self.MarketOrder(self.symbol, -quantity)
                     if ticket.QuantityFilled != -quantity:
                         self.cont_liquidate = True
+        # otherwise, trade accordingly
         else:
             self.cont_liquidate = False
             # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
+            
+            # if the price position of the upper line is lower
+            # and the underlying price exceeds the upper MA band, buy (long) the underlying
             if self.upperlinepos == "Lower" and price >= MA*(1+self.percent_above):
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.symbol, q)
@@ -223,6 +251,9 @@ class StockMA(QCAlgorithm):
                 self.highwatermark = price
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
+            
+            # if the price position of the upper line is upper
+            # and the underlying price falls below the lower MA band, sell (short) the underlying
             if self.lowerlinepos == "Upper" and price <= MA/(1+self.percent_above):
                 q = self.Portfolio.Cash/price
                 ticket = self.MarketOrder(self.symbol, -q)
@@ -232,6 +263,7 @@ class StockMA(QCAlgorithm):
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
         
+        # update the positions of the upper and lower line
         if price >= MA*(1+self.percent_above):
             self.upperlinepos = "Upper"
         else:
