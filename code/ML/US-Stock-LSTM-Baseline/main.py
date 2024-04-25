@@ -214,18 +214,24 @@ class ML(QCAlgorithm):
 
         # trade based on the model predictions and a set of defined algorithm parameters
         if abs(q*price)>100 and self.Portfolio.MarginRemaining > q * price:
+            # update the execution price if not initialized
             if self.exePrice == 0:
                 self.exePrice = self.Portfolio[self.stock].AveragePrice
             sell = False
+
+            # obtain the date of the last trade, and to update signals accordingly
             his = self.History(self.stock, self.tradePeriod+1, self.setResolution)
             # self.Log(his)
             # self.Log(his.index[0])
+            
+            # if the number of days since the last trade expires, it will exit the trade positions
             if self.sellatndays:
                 # delta = timedelta(hours=self.tradePeriod) if self.setResolution == Resolution.Hour else timedelta(days=self.tradePeriod)
                 if self.placedTrade <= his.index[0][1].strftime("%Y-%m-%d %H:%M"):
                     sell = True
                     self.Log(f"Time expired: {his.index[0][1].strftime('%Y-%m-%d %H:%M')}")
             
+            # if there is update in the signal, extend the holding period
             if self.extendWhenSignalled:
                 if (signal == BUY_SIGNAL and q > 0) or (signal == SELL_SIGNAL and q < 0):
                     self.placedTrade = self.Time.strftime("%Y-%m-%d %H:%M") #extend
@@ -233,26 +239,32 @@ class ML(QCAlgorithm):
                         self.exePrice = price
                     self.Log(f"Time extended")
             
+            # if there are changes in the trading signal, update the sell signal
             if self.sellWhenSignalChange:
                 if (signal == BUY_SIGNAL and q < 0) or (signal == SELL_SIGNAL and q > 0):
                     sell = True
                     self.Log(f"Signal Changed: sell")
 
+            # if it is not a sell signal and set to be sold at a fixed percentage (n%), trade
             if not sell and self.sellatnpercent:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
+                # if the portfolio quantity is positive, execute a sell order
                 if q>0:
                     if price > self.exePrice * (1 + self.npercent):
                         self.MarketOrder(self.stock, -q)
                     else:
                         self.LimitOrder(self.stock, -q, self.exePrice * (1 + self.npercent) , tag="take profit")
+                # otherwise if the portfolio quantity is negative, execute a buy order
                 elif q<0:
                     if price < self.exePrice * (1 - self.npercent):
                         self.MarketOrder(self.stock, -q)
                     else:
                         self.LimitOrder(self.stock, -q, self.exePrice * (1 - self.npercent) , tag="take profit")
 
+            # if it is not a sell signal and set to have a stop loss percentage, trade
             if not sell and self.stoplosspercent>0:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.Day
+                # if the portfolio quantity is positive, execute a stop loss sell order
                 if q>0:
                     if price < self.exePrice * (1 - self.stoplosspercent):
                         self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
@@ -260,6 +272,7 @@ class ML(QCAlgorithm):
                         self.Log(f"Stop Loss, price: {price}")
                     else:
                         self.StopLimitOrder(self.stock, -q, self.exePrice * (1 - self.stoplosspercent), self.exePrice * (1 - self.stoplosspercent))
+                # otherwise, if the portfolio quantity is negative, execute a stop buy order
                 elif q<0:
                     if price > self.exePrice * (1 + self.stoplosspercent):
                         self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
@@ -268,19 +281,23 @@ class ML(QCAlgorithm):
                     else:
                         self.StopLimitOrder(self.stock, -q, self.exePrice * (1 + self.stoplosspercent), self.exePrice * (1 + self.stoplosspercent))
             
+            # if a sell signal is triggered, execute sell orders
             if sell:
                 self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
                 ticket = self.MarketOrder(self.stock, -q)
                 
+        # if there are no positions, trade accordingly
         else:
             self.exePrice = 0
             self.DefaultOrderProperties.TimeInForce = TimeInForce.GoodTilCanceled
+            # place a buy order if a buy signal is triggered
             if signal == BUY_SIGNAL:
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.stock, q)
                 self.Log(f"Price: {price}, signal: {signal}, buy {q}")
                 self.traded = True
                 self.placedTrade = self.Time.strftime("%Y-%m-%d %H:%M")
+            # place a sell order is a sell signal is triggered
             elif signal == SELL_SIGNAL:
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.stock, -q)
