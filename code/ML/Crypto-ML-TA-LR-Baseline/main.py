@@ -50,7 +50,7 @@ class ML(QCAlgorithm):
     def Initialize(self):
         '''Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. 
         All algorithms must be initialized before performing testing.'''
-        self.SetStartDate(2020, 9, 1)  # Set Start Date
+        self.SetStartDate(2019, 9, 1)  # Set Start Date
         self.SetEndDate(2022,12,31)
         self.SetCash(1000000)  # Set Strategy Cash
         
