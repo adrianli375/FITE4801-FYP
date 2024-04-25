@@ -108,7 +108,7 @@ class StockMA(QCAlgorithm):
         self.regressorLSTM.add(Dropout(0.2))
         # The output layer
         self.regressorLSTM.add(Dense(units=1))
-        # Compiling the RNN
+        # Compiling the LSTM model
         self.regressorLSTM.compile(optimizer=SGD(learning_rate=0.001, momentum=0.9, nesterov=False),loss='mean_squared_error')
         # Fitting to the training set
         self.regressorLSTM.fit(x_train,y_train,epochs=25,validation_split=0.1,batch_size=150)
