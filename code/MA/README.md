@@ -9,8 +9,7 @@ Different versions are developed which leads to the final algorithm. The table b
 | v0        | N/A                                                                                       | The baseline moving average strategy.                            |
 | v1        | Added a pair of MA bands to open trades                                                   |                                                                  |
 | v2        | Added a pair of MA bands to open and close trades                                         |                                                                  |
-| v3        | Volatility adjustment to the MA bands, based on v1                                        |                                                                  |
-| v3.5      | Volatility adjustment to the MA bands, based on v2                                        | The actual "v3" that is present in the report (for both markets) |
+| v3      | Volatility adjustment to the MA bands, based on v2                                        |                                                                        |
 | v4        | Use two pairs of MA bands to open and close trades                                        |                                                                  |
 | v5        | Adopted a dynamic moving average                                                          |                                                                  |
 | v6        | Added the LSTM model to predict future volatility                                         |                                                                  |
