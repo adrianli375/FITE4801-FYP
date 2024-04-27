@@ -332,7 +332,8 @@ class CryptoMA(QCAlgorithm):
             self.cont_liquidate = False
             # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
 
-            # if the previous price position of the upper line is lower and the underlying price exceeds the upper MA band (indicating a cross)
+            # if the previous price position of the upper line is lower 
+            # and the underlying price exceeds the upper MA band (indicating a cross)
             # buy (long) the underlying
             if self.upperlinepos == "Lower" and price >= MA*(1+self.percent_above):
                 q = self.Portfolio.Cash/price 

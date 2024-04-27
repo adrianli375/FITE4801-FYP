@@ -62,8 +62,9 @@ class CryptoMA(QCAlgorithm):
 
         quantity = self.Portfolio[self.symbol].Quantity
 
-        # if the price position of the upper line is lower
-        # and the underlying price exceeds the MA line, buy (long) the underlying
+        # if the previous price position of the upper line is lower 
+        # and the underlying price exceeds the upper MA band (indicating a cross)
+        # buy (long) the underlying
         if self.upperlinepos == "Lower" and price >= MA:
             self.SetHoldings(self.symbol,1)
         # if the price position of the upper line is upper
