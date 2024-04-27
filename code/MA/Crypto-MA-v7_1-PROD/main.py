@@ -132,7 +132,7 @@ class CryptoMA(QCAlgorithm):
         else:
             return
 
-        # if the model is not trained or it is time for a retrain
+        # if it is time for a retrain
         # we train the model
         if self.train and self.lasttraintime + timedelta(days=self.retrain) < self.Time:
             self.train = False
@@ -154,7 +154,8 @@ class CryptoMA(QCAlgorithm):
 
         ### (v5) Analysis to calculate MA
         # dynamic MA is calculated based on the number of peaks and troughs
-
+        
+        # Identify the peaks
         lastmax = 0
         lastmaxindex = 0
         reset = True
@@ -181,6 +182,7 @@ class CryptoMA(QCAlgorithm):
                     lastmax = 0
                     reset = True
 
+        # Identify the troughs
         lastmax = 1000000000
         lastmaxindex = 0
         reset = True
@@ -269,7 +271,7 @@ class CryptoMA(QCAlgorithm):
         # self.Log(y_predict)
 
         ### (v7) Past trades control
-        # calculates the number of trades which incur losses
+        # calculates the number of trades which incur losses net the number of trades which is profitable
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss
@@ -283,7 +285,7 @@ class CryptoMA(QCAlgorithm):
         pnl_count = max(pnl_count,0)
         ### End (v7)
 
-        # determine the width of the MA bands based on future volatility prediction of the LSTM model
+        # determine the width of the MA bands based on future volatility prediction of the LSTM model adjusted by the no. of trades which incur losses
         self.percent_above = y_predict[0] * self.volatility_coefficient + pnl_count * self.penalty_coefficient
         if self.adjustCloseVol:
             # penalty term added to close trades
@@ -330,8 +332,8 @@ class CryptoMA(QCAlgorithm):
             self.cont_liquidate = False
             # self.Log(f"{self.upperlinepos} {self.lowerlinepos}")
 
-            # if the price position of the upper line is lower
-            # and the underlying price exceeds the upper MA band, buy (long) the underlying
+            # if the previous price position of the upper line is lower and the underlying price exceeds the upper MA band (indicating a cross)
+            # buy (long) the underlying
             if self.upperlinepos == "Lower" and price >= MA*(1+self.percent_above):
                 q = self.Portfolio.Cash/price 
                 ticket = self.MarketOrder(self.symbol, q)
@@ -341,8 +343,8 @@ class CryptoMA(QCAlgorithm):
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
 
-            # if the price position of the upper line is upper
-            # and the underlying price falls below the lower MA band, sell (short) the underlying
+            # if the previous price position of the upper line is upper and the underlying price falls below the lower MA band (indicating a cross)
+            # sell (short) the underlying
             if self.lowerlinepos == "Upper" and price <= MA/(1+self.percent_above):
                 q = self.Portfolio.Cash/price
                 ticket = self.MarketOrder(self.symbol, -q)
