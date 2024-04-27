@@ -14,7 +14,7 @@ Different versions are developed which leads to the final algorithm. The table b
 | v5        | Adopted a dynamic moving average                                                          |                                                                  |
 | v6        | Added the LSTM model to predict future volatility                                         |                                                                  |
 | v6.1      | Added to LSTM model to predict future volatility, with retrain mechanism                  |                                                                  |
-| v7 (dev)  | Added adjustment to previous losses, based on v5                                          |                                                                  |
-| v7 (prod) | Added adjustment to previous losses, based on v6                                          |                                                                  |
+| v7 (dev)  | Added adjustment to previous losses, based on v5                                          | For development purpose                                                                 |
+| v7 (prod) | Added adjustment to previous losses, based on v6                                          | Without Retrain                                                                 |
 | v7.1      | Added adjustment to previous losses, with retrain mechanism of the LSTM model             | The actual "v7" used in the cryptocurrency market                |
 | v7.2      | Added adjustment to previous losses, with progressive retrain mechanism of the LSTM model | The actual "v7" used in the US stock market                      |
