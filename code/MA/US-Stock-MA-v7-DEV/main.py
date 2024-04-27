@@ -84,6 +84,7 @@ class StockMA(QCAlgorithm):
         ### (v5) Analysis to calculate MA (dynamic MA)
         # dynamic MA is calculated based on the number of peaks and troughs
 
+        # identify the peaks
         lastmax = 0
         lastmaxindex = 0
         reset = True
@@ -110,6 +111,7 @@ class StockMA(QCAlgorithm):
                     lastmax = 0
                     reset = True
 
+        # identify the troughs
         lastmax = 1000000000
         lastmaxindex = 0
         reset = True
@@ -172,7 +174,7 @@ class StockMA(QCAlgorithm):
         quantity = self.Portfolio[self.symbol].Quantity
 
         ### (v7) Past trades control
-        # calculates the number of trades which incur losses
+        # calculates the number of trades which incur losses net the number of trades which is profitable
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss

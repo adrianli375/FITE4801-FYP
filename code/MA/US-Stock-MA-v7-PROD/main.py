@@ -151,6 +151,7 @@ class StockMA(QCAlgorithm):
         ### (v5) Analysis to calculate MA (dynamic MA)
         # dynamic MA is calculated based on the number of peaks and troughs
 
+        # identify the peaks
         lastmax = 0
         lastmaxindex = 0
         reset = True
@@ -177,6 +178,7 @@ class StockMA(QCAlgorithm):
                     lastmax = 0
                     reset = True
 
+        # identify the troughs
         lastmax = 1000000000
         lastmaxindex = 0
         reset = True
@@ -259,7 +261,7 @@ class StockMA(QCAlgorithm):
         # self.Log(y_predict)
 
         ### (v7) Past trades control
-        # calculates the number of trades which incur losses
+        # calculates the number of trades which incur losses net the number of trades which is profitable
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss
@@ -273,7 +275,7 @@ class StockMA(QCAlgorithm):
         pnl_count = max(pnl_count,0)
         ### End (v7)
 
-        # determine the width of the MA bands based on future volatility prediction of the LSTM model
+        # determine the width of the MA bands based on future volatility prediction of the LSTM model adjusted by the no. of trades which incur losses
         self.percent_above = y_predict[0] * self.volatility_coefficient + pnl_count * self.penalty_coefficient
         if self.adjustCloseVol:
             # penalty term added to close trades

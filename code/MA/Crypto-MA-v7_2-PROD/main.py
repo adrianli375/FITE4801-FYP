@@ -169,7 +169,7 @@ class CryptoMA(QCAlgorithm):
         else:
             return
 
-        # if the model is not trained or it is time for a retrain
+        # if it is time for a retrain
         # we train the model
         if self.train and self.lasttraintime + timedelta(days=self.retrain) < self.Time:
             self.retrainAlgo()
@@ -192,6 +192,7 @@ class CryptoMA(QCAlgorithm):
         ### (v5) Analysis to calculate MA
         # dynamic MA is calculated based on the number of peaks and troughs
 
+        # identify the peaks
         lastmax = 0
         lastmaxindex = 0
         reset = True
@@ -218,6 +219,7 @@ class CryptoMA(QCAlgorithm):
                     lastmax = 0
                     reset = True
 
+        # identify the troughs
         lastmax = 1000000000
         lastmaxindex = 0
         reset = True
@@ -298,7 +300,7 @@ class CryptoMA(QCAlgorithm):
         # self.Log(y_predict)
 
         ### (v7) Past trades control
-        # calculates the number of trades which incur losses
+        # calculates the number of trades which incur losses net the number of trades which is profitable
         trades = self.TradeBuilder.ClosedTrades
         trades = trades[-min(len(trades),self.num_days_lookback*10):]
         pnl_count = 0 #+ve: loss
@@ -312,7 +314,7 @@ class CryptoMA(QCAlgorithm):
         pnl_count = max(pnl_count,0)
         ### End (v7)
 
-        # determine the width of the MA bands based on future volatility prediction of the LSTM model
+        # determine the width of the MA bands based on future volatility prediction of the LSTM model adjusted by the no. of trades which incur losses
         self.percent_above = y_predict[0] * self.volatility_coefficient + pnl_count * self.penalty_coefficient
         if self.adjustCloseVol:
             # penalty term added to close trades

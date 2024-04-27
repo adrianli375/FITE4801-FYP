@@ -139,6 +139,7 @@ class CryptoMA(QCAlgorithm):
         ### (v5) Analysis to calculate MA (dynamic MA)
         # dynamic MA is calculated based on the number of peaks and troughs
 
+        # identify the peaks
         lastmax = 0
         lastmaxindex = 0
         reset = True
@@ -165,6 +166,7 @@ class CryptoMA(QCAlgorithm):
                     lastmax = 0
                     reset = True
 
+        # identify the troughs
         lastmax = 1000000000
         lastmaxindex = 0
         reset = True
