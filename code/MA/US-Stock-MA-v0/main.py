@@ -67,8 +67,9 @@ class StockMA(QCAlgorithm):
         # buy (long) the underlying
         if self.upperlinepos == "Lower" and price >= MA:
             self.SetHoldings(self.symbol,1)
-        # if the price position of the upper line is upper
-        # and the underlying price falls below the MA line, sell (short) the underlying
+        # if the previous price position of the upper line is upper
+        # and the underlying price falls below the lower MA band (indicating a cross)
+        # sell (short) the underlying
         if self.upperlinepos == "Upper" and price <= MA:
             self.SetHoldings(self.symbol,-1)
         

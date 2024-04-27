@@ -344,7 +344,8 @@ class CryptoMA(QCAlgorithm):
                 self.lowwatermark = price
                 self.cur_purchaseprice = price
 
-            # if the previous price position of the upper line is upper and the underlying price falls below the lower MA band (indicating a cross)
+            # if the previous price position of the upper line is upper
+            # and the underlying price falls below the lower MA band (indicating a cross)
             # sell (short) the underlying
             if self.lowerlinepos == "Upper" and price <= MA/(1+self.percent_above):
                 q = self.Portfolio.Cash/price
